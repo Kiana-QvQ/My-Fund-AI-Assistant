@@ -1,0 +1,3 @@
+# Optional read-only MCP query integration.
+fastmcp>=2.14.0
+vibe-trading-ai

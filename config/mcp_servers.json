@@ -1,0 +1,20 @@
+{
+  "servers": {
+    "vibe-trading": {
+      "command": "vibe-trading-mcp",
+      "args": [],
+      "enabled": true,
+      "read_only_tools": [
+        "get_market_data",
+        "search_symbol",
+        "trading_connections",
+        "trading_check",
+        "trading_account",
+        "trading_positions",
+        "trading_orders",
+        "trading_quote",
+        "trading_history"
+      ]
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "as_of": "2026-07-16",
+  "base_currency": "CNY",
+  "holdings": [
+    {
+      "fund_code": "012773",
+      "name": "嘉实超短债债券A",
+      "shares": null,
+      "cost_basis": 2000.0,
+      "target_percent": 51.0,
+      "asset_class": "短债基金",
+      "note": "已买入，当前记录以实际投入金额为准；净值和份额待数据刷新后补充。"
+    }
+  ]
+}
