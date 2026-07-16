@@ -9,6 +9,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import tomllib
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -16,6 +18,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 POLICY_PATH = ROOT / "config" / "portfolio_policy.json"
 INTEGRATIONS_PATH = ROOT / "config" / "project_integrations.json"
+CODEX_CONFIG_PATH = Path.home() / ".codex" / "config.toml"
 
 
 def load_policy() -> dict:
@@ -44,6 +47,41 @@ def load_api_key() -> str:
     return ""
 
 
+def load_runtime_config() -> dict:
+    """Load provider settings, with environment variables taking precedence."""
+    config_path = Path(
+        os.environ.get("AI_CONFIG_FILE", str(CODEX_CONFIG_PATH))
+    ).expanduser()
+    config = {}
+    if config_path.is_file():
+        try:
+            config = tomllib.loads(config_path.read_text(encoding="utf-8"))
+        except (OSError, tomllib.TOMLDecodeError):
+            config = {}
+
+    provider_name = os.environ.get("AI_PROVIDER") or config.get("model_provider", "")
+    provider = config.get("model_providers", {}).get(provider_name, {})
+    provider_base_url = (
+        provider.get("base_url")
+        or config.get("openai_base_url")
+        if provider_name.lower() == "openai"
+        else provider.get("base_url")
+    )
+    configured_wire_api = (
+        provider.get("wire_api")
+        or config.get("wire_api")
+        or ("responses" if provider_name.lower() == "openai" else "chat_completions")
+    )
+    return {
+        "base_url": os.environ.get("AI_BASE_URL")
+        or provider_base_url
+        or "https://api.openai.com/v1",
+        "model": os.environ.get("AI_MODEL") or config.get("model", ""),
+        "wire_api": os.environ.get("AI_WIRE_API")
+        or configured_wire_api,
+    }
+
+
 def build_prompt(mode: str, user_input: str) -> str:
     policy = json.dumps(load_policy(), ensure_ascii=False, indent=2)
     integrations = json.dumps(load_integrations(), ensure_ascii=False, indent=2)
@@ -70,17 +108,30 @@ def build_prompt(mode: str, user_input: str) -> str:
 
 
 def ask_ai(prompt: str) -> str:
-    base_url = os.environ.get("AI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+    runtime = load_runtime_config()
+    base_url = runtime["base_url"].rstrip("/")
     api_key = load_api_key()
-    model = os.environ.get("AI_MODEL", "")
+    model = runtime["model"]
+    wire_api = runtime["wire_api"]
     if not base_url or not api_key or not model:
         raise SystemExit(
             "未配置 AI Key 或 AI_MODEL。请设置 AI_API_KEY/OPENAI_API_KEY，"
-            "或确保 ~/.codex/auth.json 存在；再设置 AI_MODEL。"
+            "或确保 ~/.codex/auth.json 和 ~/.codex/config.toml 存在。"
         )
 
-    payload = json.dumps(
-        {
+    if wire_api == "responses":
+        request_path = "/responses"
+        body = {
+            "model": model,
+            "instructions": "你是只提供研究、规划和复盘建议的投资助理，不执行交易。",
+            "input": prompt,
+        }
+        reasoning_effort = os.environ.get("AI_REASONING_EFFORT")
+        if reasoning_effort:
+            body["reasoning"] = {"effort": reasoning_effort}
+    else:
+        request_path = "/chat/completions"
+        body = {
             "model": model,
             "temperature": 0.2,
             "messages": [
@@ -91,9 +142,9 @@ def ask_ai(prompt: str) -> str:
                 {"role": "user", "content": prompt},
             ],
         }
-    ).encode("utf-8")
+    payload = json.dumps(body, ensure_ascii=False).encode("utf-8")
     request = urllib.request.Request(
-        f"{base_url}/chat/completions",
+        f"{base_url}{request_path}",
         data=payload,
         headers={
             "Authorization": f"Bearer {api_key}",
@@ -101,8 +152,42 @@ def ask_ai(prompt: str) -> str:
         },
         method="POST",
     )
-    with urllib.request.urlopen(request, timeout=120) as response:
-        result = json.loads(response.read().decode("utf-8"))
+    proxy = os.environ.get("AI_HTTPS_PROXY")
+    opener = (
+        urllib.request.build_opener(
+            urllib.request.ProxyHandler({"http": proxy, "https": proxy})
+        )
+        if proxy
+        else urllib.request.build_opener()
+    )
+    try:
+        with opener.open(request, timeout=120) as response:
+            result = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")[:500]
+        raise SystemExit(f"AI 服务返回 HTTP {exc.code}：{detail}") from exc
+    except urllib.error.URLError as exc:
+        raise SystemExit(
+            f"无法连接 AI 服务：{base_url}。"
+            "请检查 AI_BASE_URL、网络代理，或设置 AI_HTTPS_PROXY。"
+        ) from exc
+    except TimeoutError as exc:
+        raise SystemExit(
+            f"连接 AI 服务超时：{base_url}。"
+            "请检查网络代理或更换可访问的 OpenAI-compatible 网关。"
+        ) from exc
+
+    if wire_api == "responses":
+        if isinstance(result.get("output_text"), str):
+            return result["output_text"]
+        texts = []
+        for item in result.get("output", []):
+            for content in item.get("content", []):
+                if content.get("type") in ("output_text", "text"):
+                    texts.append(content.get("text", ""))
+        if texts:
+            return "\n".join(texts)
+        raise SystemExit("Responses API 返回成功，但没有找到文本输出。")
     return result["choices"][0]["message"]["content"]
 
 

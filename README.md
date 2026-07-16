@@ -22,8 +22,9 @@
 
 ## 使用
 
-设置 `AI_MODEL`，并通过 `AI_API_KEY`、`OPENAI_API_KEY` 或本机
-`~/.codex/auth.json` 提供 API Key 后运行。Key 不会写入项目文件：
+程序会自动读取本机 `~/.codex/config.toml` 中的模型和 `base_url`，
+并通过 `~/.codex/auth.json` 获取 API Key。也可以使用环境变量覆盖。
+Key 不会写入项目文件：
 
 ```powershell
 python app/ai_assistant.py --mode plan --input "本月可投入300元，510300估值分位32%"
