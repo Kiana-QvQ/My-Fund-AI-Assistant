@@ -2,9 +2,17 @@ name: Update Portfolio Dashboard
 
 on:
   workflow_dispatch:
+    inputs:
+      alert_mode:
+        description: "Email mode: evening / morning / both / skip"
+        required: false
+        default: both
   schedule:
-    # 09:00 and 21:00 China Standard Time, with GitHub's normal schedule delay.
-    - cron: "0 1,13 * * 1-5"
+    # Split crons so github.event.schedule can distinguish morning vs evening.
+    # 09:00 CST morning (US PE + same-day order); 21:00 CST evening (A-share PE).
+    # GitHub cron may delay by several minutes.
+    - cron: "0 1 * * 1-5"
+    - cron: "0 13 * * 1-5"
 
 permissions:
   contents: write
@@ -24,11 +32,43 @@ jobs:
       - name: Install data dependencies
         run: python -m pip install -r requirements-data.txt
 
+      - name: Resolve alert mode
+        id: mode
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            MODE="${{ github.event.inputs.alert_mode }}"
+            MODE="${MODE:-both}"
+          else
+            case "${{ github.event.schedule }}" in
+              "0 1 * * 1-5") MODE="morning" ;;
+              "0 13 * * 1-5") MODE="evening" ;;
+              *) MODE="both" ;;
+            esac
+          fi
+          echo "value=${MODE}" >> "$GITHUB_OUTPUT"
+          echo "Alert mode: ${MODE}"
+
       - name: Refresh market snapshot
         run: python scripts/refresh_market_snapshot.py --principal 10000
 
       - name: Update README dashboard
         run: python scripts/update_portfolio_readme.py
+
+      - name: Send trade alert email
+        if: steps.mode.outputs.value != 'skip'
+        env:
+          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          MAIL_FROM: ${{ secrets.MAIL_FROM }}
+          MONTHLY_BUDGET: ${{ secrets.MONTHLY_BUDGET }}
+        run: |
+          BUDGET="${MONTHLY_BUDGET:-300}"
+          if [ -z "${BUDGET}" ]; then BUDGET=300; fi
+          python scripts/send_trade_alert_email.py --mode "${{ steps.mode.outputs.value }}" --monthly "${BUDGET}"
 
       - name: Commit dashboard changes
         run: |
