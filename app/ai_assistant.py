@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 import tomllib
 import urllib.error
 import urllib.request
@@ -27,6 +28,25 @@ def load_policy() -> dict:
 
 def load_integrations() -> dict:
     return json.loads(INTEGRATIONS_PATH.read_text(encoding="utf-8"))
+
+
+def load_upstream_skill_context() -> str:
+    """Load selected upstream skills without modifying their source."""
+    integrations = load_integrations()
+    sections = []
+    for project, settings in integrations.get("enabled_projects", {}).items():
+        for relative_path in settings.get("skill_files", []):
+            path = ROOT / relative_path
+            if not path.is_file():
+                sections.append(f"[缺失] {project}: {relative_path}")
+                continue
+            content = path.read_text(encoding="utf-8")
+            excerpt_chars = int(os.environ.get("AI_SKILL_EXCERPT_CHARS", "1800"))
+            excerpt = content[:excerpt_chars]
+            if len(content) > len(excerpt):
+                excerpt += "\n[上游 Skill 原文已截取；以本文件规则为准，不代表完整工具执行。]"
+            sections.append(f"### {project} / {relative_path}\n{excerpt}")
+    return "\n\n".join(sections)
 
 
 def load_api_key() -> str:
@@ -85,6 +105,7 @@ def load_runtime_config() -> dict:
 def build_prompt(mode: str, user_input: str) -> str:
     policy = json.dumps(load_policy(), ensure_ascii=False, indent=2)
     integrations = json.dumps(load_integrations(), ensure_ascii=False, indent=2)
+    upstream_skills = load_upstream_skill_context()
     task = {
         "plan": "根据投资政策和输入，生成下一期定投/再平衡计划。必须列出依据、仓位影响、风险、待人工确认事项。",
         "journal": "把输入整理成一篇交易日记草稿，区分事实、当时判断、情绪、结果和下次改进。",
@@ -98,13 +119,18 @@ def build_prompt(mode: str, user_input: str) -> str:
 项目能力边界：
 {integrations}
 
+本次实际加载的上游 Skill 内容：
+{upstream_skills}
+
 任务：
 {task}
 
 用户输入：
 {user_input}
 
-输出使用中文，明确标注“事实”“推断”“建议”“需要人工确认”。"""
+输出使用中文，明确标注“事实”“推断”“建议”“需要人工确认”。
+报告末尾必须增加“实际调用的上游 Skill”一节，逐一列出本次提供上下文的文件；
+不得声称调用了没有出现在上文中的工具或数据源。"""
 
 
 def ask_ai(prompt: str) -> str:
@@ -192,6 +218,8 @@ def ask_ai(prompt: str) -> str:
 
 
 def main() -> None:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description="交易规划与日记 AI 助手")
     parser.add_argument("--mode", choices=("plan", "journal", "review"), required=True)
     parser.add_argument("--input", required=True, help="输入文本或输入文件路径")
