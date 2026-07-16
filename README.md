@@ -4,23 +4,22 @@
 
 ## 当前持仓
 
-> 更新时间：**2026-07-16**
-> 口径：以下金额为已记录的实际投入金额；净值、份额和浮动盈亏将在行情数据刷新后补充。
-> AI 只提供研究和计划建议，不会自动下单。
+<!-- PORTFOLIO_STATUS_START -->
+> 自动更新时间：**2026-07-16**
+> 已记录投入总额：**¥2,000.00**
+> 🟡 今日建议：暂不追加 012773，先观察其他目标资产估值
+> 说明：当前投入占比 = 单项已投入金额 ÷ 已记录持仓投入总额；不是券商账户实时市值占比。
 
-| 基金 | 代码 | 资产类别 | 已投入 | 组合目标 | 当前记录 |
-|---|---:|---|---:|---:|---|
-| 嘉实超短债债券 A | `012773` | 短债基金 | **¥2,000.00** | 51% | 已持有 |
+| 基金 | 代码 | 已投入 | 目标仓位 | 当前投入占比 | 偏离目标 | 今日建议 |
+|---|---:|---:|---:|---:|---:|---|
+| 嘉实超短债债券A | `012773` | ¥2,000.00 | 51.00% | **100.00%** | +49.00% | 暂不追加 |
 
-### 持仓快照
+### 今日判断依据
 
-```text
-012773  嘉实超短债债券A
-已投入    ¥2,000.00
-目标仓位  51%
-状态      已买入 · 低波动底仓
-```
+- `012773`：当前投入占比 100.00% 高于目标 51.00%。
 
+> 数据状态：market_snapshot.json 已加载。AI 只提供研究建议，不自动下单。
+<!-- PORTFOLIO_STATUS_END -->
 持仓源文件：[`config/portfolio_holdings.json`](config/portfolio_holdings.json)
 
 ## 项目能力
@@ -61,6 +60,7 @@ python app/ai_assistant.py --mode journal --input journal/daily/2026-07-16-templ
 python app/ai_assistant.py --mode review --input reports/latest-trade.md
 python app/ai_assistant.py --mode plan --input "本月可投入300元" --output reports/2026-07-plan.md
 python scripts/refresh_market_snapshot.py --principal 10000
+python scripts/update_portfolio_readme.py
 ```
 
 ## 目录
@@ -70,7 +70,7 @@ python scripts/refresh_market_snapshot.py --principal 10000
 - `config/mcp_servers.json`：MCP 服务和只读工具白名单
 - `app/ai_assistant.py`：AI 规划、日记和复盘入口
 - `app/mcp_client.py`：MCP stdio 客户端
-- `scripts/`：行情刷新与 MCP 查询脚本
+- `scripts/`：行情刷新、MCP 查询和 README 自动更新脚本
 - `journal/`：交易日记
 - `reports/`：AI 报告
 - `data/`：行情和账户数据
