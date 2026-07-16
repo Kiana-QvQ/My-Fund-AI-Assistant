@@ -66,8 +66,13 @@ jobs:
           MAIL_FROM: ${{ secrets.MAIL_FROM }}
           MONTHLY_BUDGET: ${{ secrets.MONTHLY_BUDGET }}
         run: |
-          BUDGET="${MONTHLY_BUDGET:-300}"
-          if [ -z "${BUDGET}" ]; then BUDGET=300; fi
+          # Blank GitHub Secrets become ""; coerce to 300 for argparse/shell.
+          if [ -z "${MONTHLY_BUDGET}" ]; then
+            unset MONTHLY_BUDGET
+            BUDGET=300
+          else
+            BUDGET="${MONTHLY_BUDGET}"
+          fi
           python scripts/send_trade_alert_email.py --mode "${{ steps.mode.outputs.value }}" --monthly "${BUDGET}"
 
       - name: Commit dashboard changes

@@ -173,6 +173,14 @@ def build_body(mode: str, snapshot: dict, monthly: float) -> tuple[str, str]:
     return subject, body
 
 
+def env_float(name: str, default: float) -> float:
+    """Read float env var; treat missing/blank as default (GitHub Secrets often inject '')."""
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    return float(raw)
+
+
 def require_mail_config() -> dict[str, str]:
     to_addr = os.environ.get("ALERT_EMAIL", "").strip()
     smtp_user = os.environ.get("SMTP_USER", "").strip()
@@ -248,7 +256,7 @@ def main() -> None:
     parser.add_argument(
         "--monthly",
         type=float,
-        default=float(os.environ.get("MONTHLY_BUDGET", "300")),
+        default=env_float("MONTHLY_BUDGET", 300.0),
         help="每月定投金额，默认 300",
     )
     parser.add_argument(
