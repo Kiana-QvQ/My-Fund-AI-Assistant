@@ -5,6 +5,7 @@
 __pycache__/
 *.py[cod]
 .venv/
+runtime/
 
 # Personal data and generated reports
 data/*
@@ -17,4 +18,3 @@ reports/*
 # Upstream repositories are immutable local checkouts, not part of this project
 integrations/upstream/*
 !integrations/upstream/README.md
-

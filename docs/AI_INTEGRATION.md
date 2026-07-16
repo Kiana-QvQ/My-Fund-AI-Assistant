@@ -44,8 +44,8 @@ backtesting. Store the raw input and timestamp with every report.
 ### Phase 3: thesis and behavior review
 
 Use AI Berkshire-style thesis tracking to compare the original investment
-thesis with later evidence. Use AI Hedge Fund-style multi-perspective debate
-only as a risk-review module, not as an execution engine.
+thesis with later evidence. Use Vibe-Trading's journal and Shadow Account
+workflow to compare actual behavior with the policy, not to generate orders.
 
 ## Example
 
@@ -57,4 +57,3 @@ python app/ai_assistant.py --mode plan --input "本月可投入300元，510300�
 python app/ai_assistant.py --mode journal --input journal/daily/2026-07-16-template.md
 python app/ai_assistant.py --mode review --input reports/latest-trade.md
 ```
-

@@ -1,0 +1,24 @@
+{
+  "enabled_projects": {
+    "ai_berkshire": {
+      "path": "integrations/upstream/ai-berkshire",
+      "role": "投资论文、组合纪律、新闻归因和长期复盘",
+      "execution": "通过 Codex/Claude Skills 使用，不自动下单"
+    },
+    "vibe_trading": {
+      "path": "integrations/upstream/vibe-trading",
+      "role": "行情研究、交易日记分析、回测和纸面账户",
+      "execution": "优先 Docker 或独立运行环境，只读和纸面模式"
+    }
+  },
+  "disabled_projects": {
+    "ai_hedge_fund": {
+      "reason": "与当前指数定投目标重叠少、依赖重、暂不进入运行链路"
+    }
+  },
+  "guardrails": {
+    "automatic_order_placement": false,
+    "real_broker_connections": false,
+    "human_confirmation_required": true
+  }
+}

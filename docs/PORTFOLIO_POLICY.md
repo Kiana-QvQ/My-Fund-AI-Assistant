@@ -225,7 +225,6 @@ integrations/
   upstream/                 第三方项目的只读副本
     ai-berkshire/
     vibe-trading/
-    ai-hedge-fund/
   adapters/                 我们自己的适配器，不放入上游目录
 app/
   ai_assistant.py           规划、日记和复盘入口

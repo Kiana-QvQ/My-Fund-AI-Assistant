@@ -15,14 +15,20 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY_PATH = ROOT / "config" / "portfolio_policy.json"
+INTEGRATIONS_PATH = ROOT / "config" / "project_integrations.json"
 
 
 def load_policy() -> dict:
     return json.loads(POLICY_PATH.read_text(encoding="utf-8"))
 
 
+def load_integrations() -> dict:
+    return json.loads(INTEGRATIONS_PATH.read_text(encoding="utf-8"))
+
+
 def build_prompt(mode: str, user_input: str) -> str:
     policy = json.dumps(load_policy(), ensure_ascii=False, indent=2)
+    integrations = json.dumps(load_integrations(), ensure_ascii=False, indent=2)
     task = {
         "plan": "根据投资政策和输入，生成下一期定投/再平衡计划。必须列出依据、仓位影响、风险、待人工确认事项。",
         "journal": "把输入整理成一篇交易日记草稿，区分事实、当时判断、情绪、结果和下次改进。",
@@ -32,6 +38,9 @@ def build_prompt(mode: str, user_input: str) -> str:
 
 投资政策：
 {policy}
+
+项目能力边界：
+{integrations}
 
 任务：
 {task}
@@ -83,6 +92,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="交易规划与日记 AI 助手")
     parser.add_argument("--mode", choices=("plan", "journal", "review"), required=True)
     parser.add_argument("--input", required=True, help="输入文本或输入文件路径")
+    parser.add_argument("--output", help="将结果保存到指定 Markdown 文件")
+    parser.add_argument("--dry-run", action="store_true", help="只打印提示词，不调用 AI")
     args = parser.parse_args()
 
     input_path = Path(args.input)
@@ -91,9 +102,22 @@ def main() -> None:
         if input_path.is_file()
         else args.input
     )
-    print(ask_ai(build_prompt(args.mode, user_input)))
+    prompt = build_prompt(args.mode, user_input)
+    if args.dry_run:
+        print(prompt)
+        return
+
+    result = ask_ai(prompt)
+    if args.output:
+        output_path = Path(args.output)
+        if not output_path.is_absolute():
+            output_path = ROOT / output_path
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(result.rstrip() + "\n", encoding="utf-8")
+        print(f"已保存报告：{output_path}")
+    else:
+        print(result)
 
 
 if __name__ == "__main__":
     main()
-

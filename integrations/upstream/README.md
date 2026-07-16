@@ -7,9 +7,7 @@ projects used for reference or optional adapters.
 |---|---|---|
 | AI Berkshire | `ai-berkshire/` | https://github.com/xbtlin/ai-berkshire |
 | Vibe-Trading | `vibe-trading/` | https://github.com/HKUDS/Vibe-Trading |
-| AI Hedge Fund | `ai-hedge-fund/` | https://github.com/virattt/ai-hedge-fund |
 
 Do not edit these checkouts. Update them independently with `git pull` inside
 the relevant directory. Project-specific code belongs in `app/`, `config/`,
 `journal/`, `reports/`, or `integrations/adapters/`.
-
