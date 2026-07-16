@@ -27,6 +27,8 @@ AI may not:
 3. Data is copied into `data/` or passed as structured input; upstream source
    files are never edited.
 4. AI output is saved under `reports/` only after a human review.
+5. API keys are read from process environment variables or the local Codex auth
+   file at runtime and are never saved into this repository.
 
 ## Suggested phases
 

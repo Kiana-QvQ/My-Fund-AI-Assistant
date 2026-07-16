@@ -26,6 +26,24 @@ def load_integrations() -> dict:
     return json.loads(INTEGRATIONS_PATH.read_text(encoding="utf-8"))
 
 
+def load_api_key() -> str:
+    """Read a key at runtime without copying it into project files."""
+    key = os.environ.get("AI_API_KEY") or os.environ.get("OPENAI_API_KEY")
+    if key:
+        return key
+
+    auth_file = Path(
+        os.environ.get("AI_AUTH_FILE", "~/.codex/auth.json")
+    ).expanduser()
+    if auth_file.is_file():
+        try:
+            auth = json.loads(auth_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return ""
+        return str(auth.get("OPENAI_API_KEY", ""))
+    return ""
+
+
 def build_prompt(mode: str, user_input: str) -> str:
     policy = json.dumps(load_policy(), ensure_ascii=False, indent=2)
     integrations = json.dumps(load_integrations(), ensure_ascii=False, indent=2)
@@ -52,13 +70,13 @@ def build_prompt(mode: str, user_input: str) -> str:
 
 
 def ask_ai(prompt: str) -> str:
-    base_url = os.environ.get("AI_BASE_URL", "").rstrip("/")
-    api_key = os.environ.get("AI_API_KEY", "")
+    base_url = os.environ.get("AI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+    api_key = load_api_key()
     model = os.environ.get("AI_MODEL", "")
     if not base_url or not api_key or not model:
         raise SystemExit(
-            "未配置 AI_BASE_URL、AI_API_KEY 或 AI_MODEL。"
-            "请复制 config/.env.example 到本地环境后设置，或使用本地 OpenAI-compatible 服务。"
+            "未配置 AI Key 或 AI_MODEL。请设置 AI_API_KEY/OPENAI_API_KEY，"
+            "或确保 ~/.codex/auth.json 存在；再设置 AI_MODEL。"
         )
 
     payload = json.dumps(
