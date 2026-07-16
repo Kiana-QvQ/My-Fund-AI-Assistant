@@ -40,6 +40,8 @@ def build_status() -> dict:
     building_principal = float(
         holdings_doc.get("building_principal") or total_cost or 0
     )
+    initial_build_percent = float(holdings_doc.get("initial_build_percent") or 20)
+    first_month_budget = building_principal * initial_build_percent / 100
     as_of = date.today().isoformat()
     rows = []
 
@@ -50,9 +52,16 @@ def build_status() -> dict:
         target_amount = building_principal * target_percent / 100
         shortfall = max(target_amount - cost, 0)
         deviation = current_percent - target_percent
+        phase_target = first_month_budget * target_percent / 100
         fund = snapshot.get("funds", {}).get(item["fund_code"], {})
         purchase_status = fund.get("purchase_status", "待刷新")
-        if shortfall > 0 and purchase_status in ("开放申购", "限大额"):
+        if item.get("asset_class") == "短债基金" and cost >= phase_target:
+            decision = "本期不补满"
+            reason = (
+                f"短债不看PE；第1月计划金额约 {money(phase_target)}，"
+                f"当前已投入 {money(cost)}，不建议今天一次补足 {money(shortfall)}"
+            )
+        elif shortfall > 0 and purchase_status in ("开放申购", "限大额"):
             decision = "目标未完成"
             reason = (
                 f"目标金额 {money(target_amount)}，已投入 {money(cost)}，"
@@ -115,7 +124,12 @@ def build_status() -> dict:
 
     if rows:
         held = rows[0]
-        if held["shortfall"] > 0:
+        if held["decision"] == "本期不补满":
+            overall = (
+                f"🟡 今日短债建议：不按PE判断，也不要求一次补足；"
+                f"{held['fund_code']} 长期目标还差 {money(held['shortfall'])}"
+            )
+        elif held["shortfall"] > 0:
             overall = (
                 f"🟢 建仓进度：{total_cost / building_principal * 100:.2f}%"
                 f"；{held['fund_code']} 距目标还差 {money(held['shortfall'])}"
@@ -130,11 +144,14 @@ def build_status() -> dict:
         "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         "total_cost_basis": total_cost,
         "building_principal": building_principal,
+        "initial_build_percent": initial_build_percent,
+        "first_month_budget": first_month_budget,
         "building_progress_percent": total_cost / building_principal * 100
         if building_principal
         else 0,
         "overall_decision": overall,
         "rows": rows,
+        "indexes": snapshot.get("indexes", {}),
         "data_status": "market_snapshot.json 已加载"
         if snapshot
         else "尚未生成 market_snapshot.json",
@@ -171,6 +188,59 @@ def render(status: dict) -> str:
     )
     for row in status["rows"]:
         lines.append(f"- `{row['fund_code']}`：{row['reason']}。")
+    lines.extend(
+        [
+            "",
+            "## 今日权益估值（4支）",
+            "",
+            "> PE 数据用于判断指数贵不贵；场外基金按当日净值成交，数据日期以指数实际更新日为准。",
+            "",
+            "| 标的 | 场内代码 | 场外基金 | PE-TTM | 历史分位 | 数据日期 | 今日判断 |",
+            "|---|---:|---:|---:|---:|---|---|",
+        ]
+    )
+    index_rows = (
+        ("沪深300", "510300", "460300", "A股规则"),
+        ("中证500", "510500", "160119", "A股规则"),
+        ("标普500", "513500", "050025", "美股规则"),
+        ("纳斯达克100", "159941", "016452", "美股规则"),
+    )
+    for name, market_code, fund_code, rule in index_rows:
+        index = status["indexes"].get(name, {})
+        pe = index.get("pe_ttm")
+        percentile = index.get("pe_percentile")
+        data_date = index.get("date", "待核验")
+        if pe is None or percentile is None:
+            pe_text = "待核验"
+            percentile_text = "待核验"
+            decision = "数据不足，暂停自动买入"
+        elif rule == "A股规则":
+            pe_text = f"{pe:.2f}"
+            percentile_text = f"{percentile:.2f}%"
+            if percentile <= 30:
+                decision = "低估，可研究双倍定投"
+            elif percentile < 40:
+                decision = "低估，可研究定投"
+            else:
+                decision = "分位≥40%，暂停新增"
+        else:
+            pe_text = f"{pe:.2f}"
+            percentile_text = f"{percentile:.2f}%"
+            decision = (
+                "分位<50%，可研究定投"
+                if percentile < 50
+                else "分位≥50%，暂停新增"
+            )
+        lines.append(
+            f"| {name} | `{market_code}` | `{fund_code}` | {pe_text} | "
+            f"{percentile_text} | {data_date} | {decision} |"
+        )
+    lines.extend(
+        [
+            "",
+            "> 四支权益标的会随 GitHub Actions 自动刷新；显示“待核验”时不编造 PE，也不自动建议买入。",
+        ]
+    )
     lines.extend(
         [
             "",
