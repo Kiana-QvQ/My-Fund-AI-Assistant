@@ -1,6 +1,6 @@
 {
   "as_of": "2026-07-16",
-  "generated_at": "2026-07-16T16:09:19+08:00",
+  "generated_at": "2026-07-16T16:22:52+08:00",
   "total_cost_basis": 2000.0,
   "building_principal": 10000.0,
   "initial_build_percent": 20.0,
@@ -33,7 +33,7 @@
       "csindex_pe_2": 17.74,
       "history_start": "2005-04-08",
       "history_count": 5167,
-      "source": "AKShare: CSIndex + Legu index PE history"
+      "source": "scripts/_tmp_check_pe.py -> AKShare CSIndex + Legu"
     },
     "中证500": {
       "index_code": "000905",
@@ -44,19 +44,36 @@
       "csindex_pe_2": 32.5,
       "history_start": "2007-01-15",
       "history_count": 4738,
-      "source": "AKShare: CSIndex + Legu index PE history"
+      "source": "scripts/_tmp_check_pe.py -> AKShare CSIndex + Legu"
     },
     "标普500": {
-      "pe_ttm": null,
-      "pe_percentile": null,
-      "status": "unavailable",
-      "reason": "当前数据源未提供可验证的实时PE与历史分位，暂停自动判断"
+      "pe_ttm": 27.5,
+      "pe_percentile": 76.0,
+      "status": "verified_range",
+      "reason": "不同数据源口径存在差异，约 25.6~32.6；采用约 27.5 的滚动PE和近10年约76%分位。",
+      "sources": [
+        "https://www.gurufocus.com/economic_indicators/57/sp-500-pe-ratio",
+        "https://dqydj.com/sp-500-pe-ratio/",
+        "https://www.factset.com/earningsinsight",
+        "https://www.multpl.com/s-p-500-pe-ratio"
+      ],
+      "date": "2026-07-15",
+      "window": "近10年滚动PE分位",
+      "source": "联网核对结果：GuruFocus、dqydj、FactSet、Multpl、WorldPeratio 等公开数据源"
     },
     "纳斯达克100": {
-      "pe_ttm": null,
-      "pe_percentile": null,
-      "status": "unavailable",
-      "reason": "当前数据源未提供可验证的实时PE与历史分位，暂停自动判断"
+      "pe_ttm": 33.6,
+      "pe_percentile": 72.0,
+      "status": "verified_range",
+      "reason": "不同数据源口径存在差异，约 31.6~35.2；采用约 33.6 的滚动PE和近10年约72%分位。",
+      "sources": [
+        "https://www.gurufocus.com/economic_indicators/6778/nasdaq-100-pe-ratio",
+        "https://worldperatio.com/index/nasdaq-100/",
+        "https://siblisresearch.com/data/nasdaq-100-pe-ratio/"
+      ],
+      "date": "2026-07-15",
+      "window": "近10年滚动PE分位",
+      "source": "联网核对结果：GuruFocus、dqydj、FactSet、Multpl、WorldPeratio 等公开数据源"
     }
   },
   "data_status": "market_snapshot.json 已加载"

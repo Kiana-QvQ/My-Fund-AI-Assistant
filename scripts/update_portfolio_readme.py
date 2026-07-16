@@ -238,7 +238,7 @@ def render(status: dict) -> str:
     lines.extend(
         [
             "",
-            "> 四支权益标的会随 GitHub Actions 自动刷新；显示“待核验”时不编造 PE，也不自动建议买入。",
+            "> 美股 PE 使用 `config/us_pe_snapshot.json` 中的近10年滚动PE分位口径；不同网站口径可能不同，自动任务会保留数据日期和来源。",
         ]
     )
     lines.extend(

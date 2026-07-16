@@ -1,0 +1,162 @@
+{
+  "as_of": "2026-07-16",
+  "funds": {
+    "012773": {
+      "fund_code": "012773",
+      "name": "嘉实超短债债券A",
+      "nav": 1.0552,
+      "nav_date": "2026-07-15",
+      "purchase_status": "限大额",
+      "redemption_status": "开放赎回",
+      "daily_limit": 100000000.0,
+      "minimum_purchase": 10.0,
+      "fee_percent": 0.03
+    },
+    "460300": {
+      "fund_code": "460300",
+      "name": "华泰柏瑞沪深300ETF联接A",
+      "nav": 1.2039,
+      "nav_date": "2026-07-15",
+      "purchase_status": "开放申购",
+      "redemption_status": "开放赎回",
+      "daily_limit": 100000000000.0,
+      "minimum_purchase": 10.0,
+      "fee_percent": 0.1
+    },
+    "160119": {
+      "fund_code": "160119",
+      "name": "南方中证500ETF联接(LOF)A",
+      "nav": 2.2994,
+      "nav_date": "2026-07-15",
+      "purchase_status": "开放申购",
+      "redemption_status": "开放赎回",
+      "daily_limit": 100000000000.0,
+      "minimum_purchase": 10.0,
+      "fee_percent": 0.12
+    },
+    "050025": {
+      "fund_code": "050025",
+      "name": "博时标普500ETF联接A",
+      "nav": 5.5137,
+      "nav_date": "2026-07-14",
+      "purchase_status": "暂停申购",
+      "redemption_status": "开放赎回",
+      "daily_limit": 100.0,
+      "minimum_purchase": 10.0,
+      "fee_percent": 0.12
+    },
+    "016452": {
+      "fund_code": "016452",
+      "name": "南方纳斯达克100指数发起(QDII)A",
+      "nav": 2.3015,
+      "nav_date": "2026-07-14",
+      "purchase_status": "限大额",
+      "redemption_status": "开放赎回",
+      "daily_limit": 10.0,
+      "minimum_purchase": 10.0,
+      "fee_percent": 0.12
+    }
+  },
+  "indexes": {
+    "沪深300": {
+      "index_code": "000300",
+      "date": "2026-07-15",
+      "pe_ttm": 13.77,
+      "pe_percentile": 66.32,
+      "csindex_pe_1": 14.9,
+      "csindex_pe_2": 17.74,
+      "history_start": "2005-04-08",
+      "history_count": 5167,
+      "source": "scripts/_tmp_check_pe.py -> AKShare CSIndex + Legu"
+    },
+    "中证500": {
+      "index_code": "000905",
+      "date": "2026-07-15",
+      "pe_ttm": 30.87,
+      "pe_percentile": 65.3,
+      "csindex_pe_1": 30.09,
+      "csindex_pe_2": 32.5,
+      "history_start": "2007-01-15",
+      "history_count": 4738,
+      "source": "scripts/_tmp_check_pe.py -> AKShare CSIndex + Legu"
+    },
+    "标普500": {
+      "pe_ttm": 27.5,
+      "pe_percentile": 76.0,
+      "status": "verified_range",
+      "reason": "不同数据源口径存在差异，约 25.6~32.6；采用约 27.5 的滚动PE和近10年约76%分位。",
+      "sources": [
+        "https://www.gurufocus.com/economic_indicators/57/sp-500-pe-ratio",
+        "https://dqydj.com/sp-500-pe-ratio/",
+        "https://www.factset.com/earningsinsight",
+        "https://www.multpl.com/s-p-500-pe-ratio"
+      ],
+      "date": "2026-07-15",
+      "window": "近10年滚动PE分位",
+      "source": "联网核对结果：GuruFocus、dqydj、FactSet、Multpl、WorldPeratio 等公开数据源"
+    },
+    "纳斯达克100": {
+      "pe_ttm": 33.6,
+      "pe_percentile": 72.0,
+      "status": "verified_range",
+      "reason": "不同数据源口径存在差异，约 31.6~35.2；采用约 33.6 的滚动PE和近10年约72%分位。",
+      "sources": [
+        "https://www.gurufocus.com/economic_indicators/6778/nasdaq-100-pe-ratio",
+        "https://worldperatio.com/index/nasdaq-100/",
+        "https://siblisresearch.com/data/nasdaq-100-pe-ratio/"
+      ],
+      "date": "2026-07-15",
+      "window": "近10年滚动PE分位",
+      "source": "联网核对结果：GuruFocus、dqydj、FactSet、Multpl、WorldPeratio 等公开数据源"
+    }
+  },
+  "build_plan": {
+    "principal": 10000.0,
+    "initial_build_percent": 20,
+    "first_month_budget": 2000.0,
+    "allocations": [
+      {
+        "fund_code": "012773",
+        "name": "嘉实超短债债券A",
+        "target_percent": 51.0,
+        "action": "buy",
+        "planned_amount": 2000.0,
+        "reason": "稳健底仓；当前申购状态允许小额建仓；其余暂缓资金先留在短债底仓"
+      },
+      {
+        "fund_code": "460300",
+        "name": "华泰柏瑞沪深300ETF联接A",
+        "target_percent": 27.0,
+        "action": "wait",
+        "planned_amount": 0.0,
+        "reason": "PE历史分位 66.32% >= 40%，按政策暂停"
+      },
+      {
+        "fund_code": "160119",
+        "name": "南方中证500ETF联接(LOF)A",
+        "target_percent": 11.0,
+        "action": "wait",
+        "planned_amount": 0.0,
+        "reason": "PE历史分位 65.30% >= 40%，按政策暂停"
+      },
+      {
+        "fund_code": "050025",
+        "name": "博时标普500ETF联接A",
+        "target_percent": 8.0,
+        "action": "wait",
+        "planned_amount": 0.0,
+        "reason": "基金当前暂停申购"
+      },
+      {
+        "fund_code": "016452",
+        "name": "南方纳斯达克100指数发起(QDII)A",
+        "target_percent": 3.0,
+        "action": "wait",
+        "planned_amount": 0.0,
+        "reason": "滚动PE近10年历史分位 72.00% >= 50%，按政策暂停"
+      }
+    ],
+    "deferred_amount": 0.0,
+    "guardrail": "建议仅作研究计划，所有交易须人工核对申购状态和金额后执行"
+  }
+}

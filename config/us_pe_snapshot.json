@@ -1,0 +1,30 @@
+{
+  "as_of": "2026-07-15",
+  "window": "近10年滚动PE分位",
+  "source": "联网核对结果：GuruFocus、dqydj、FactSet、Multpl、WorldPeratio 等公开数据源",
+  "indexes": {
+    "标普500": {
+      "pe_ttm": 27.5,
+      "pe_percentile": 76.0,
+      "status": "verified_range",
+      "reason": "不同数据源口径存在差异，约 25.6~32.6；采用约 27.5 的滚动PE和近10年约76%分位。",
+      "sources": [
+        "https://www.gurufocus.com/economic_indicators/57/sp-500-pe-ratio",
+        "https://dqydj.com/sp-500-pe-ratio/",
+        "https://www.factset.com/earningsinsight",
+        "https://www.multpl.com/s-p-500-pe-ratio"
+      ]
+    },
+    "纳斯达克100": {
+      "pe_ttm": 33.6,
+      "pe_percentile": 72.0,
+      "status": "verified_range",
+      "reason": "不同数据源口径存在差异，约 31.6~35.2；采用约 33.6 的滚动PE和近10年约72%分位。",
+      "sources": [
+        "https://www.gurufocus.com/economic_indicators/6778/nasdaq-100-pe-ratio",
+        "https://worldperatio.com/index/nasdaq-100/",
+        "https://siblisresearch.com/data/nasdaq-100-pe-ratio/"
+      ]
+    }
+  }
+}

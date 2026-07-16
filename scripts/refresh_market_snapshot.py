@@ -12,11 +12,13 @@ from pathlib import Path
 
 import akshare as ak
 import pandas as pd
+from _tmp_check_pe import query_pe_snapshot
 
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY_PATH = ROOT / "config" / "portfolio_policy.json"
 DEFAULT_OUTPUT = ROOT / "data" / "market_snapshot.json"
+US_PE_PATH = ROOT / "config" / "us_pe_snapshot.json"
 
 FUNDS = [
     {
@@ -114,38 +116,15 @@ def fund_snapshot() -> dict[str, dict]:
 
 
 def index_snapshot() -> dict[str, dict]:
-    result = {}
-    for symbol, index_code in (("沪深300", "000300"), ("中证500", "000905")):
-        current = ak.stock_zh_index_value_csindex(symbol=index_code).iloc[0]
-        history = ak.stock_index_pe_lg(symbol=symbol).copy()
-        history["日期"] = pd.to_datetime(history["日期"])
-        history = history.sort_values("日期")
-        pe_series = pd.to_numeric(history["滚动市盈率"], errors="coerce").dropna()
-        current_pe = float(pe_series.iloc[-1])
-        percentile = float((pe_series <= current_pe).mean() * 100)
-        result[symbol] = {
-            "index_code": index_code,
-            "date": str(current["日期"]),
-            "pe_ttm": current_pe,
-            "pe_percentile": round(percentile, 2),
-            "csindex_pe_1": clean_number(current.get("市盈率1")),
-            "csindex_pe_2": clean_number(current.get("市盈率2")),
-            "history_start": str(history["日期"].iloc[0].date()),
-            "history_count": int(len(pe_series)),
-            "source": "AKShare: CSIndex + Legu index PE history",
+    result = query_pe_snapshot()
+    us_snapshot = json.loads(US_PE_PATH.read_text(encoding="utf-8"))
+    for name, item in us_snapshot.get("indexes", {}).items():
+        result[name] = {
+            **item,
+            "date": us_snapshot.get("as_of"),
+            "window": us_snapshot.get("window"),
+            "source": us_snapshot.get("source"),
         }
-    result["标普500"] = {
-        "pe_ttm": None,
-        "pe_percentile": None,
-        "status": "unavailable",
-        "reason": "当前数据源未提供可验证的实时PE与历史分位，暂停自动判断",
-    }
-    result["纳斯达克100"] = {
-        "pe_ttm": None,
-        "pe_percentile": None,
-        "status": "unavailable",
-        "reason": "当前数据源未提供可验证的实时PE与历史分位，暂停自动判断",
-    }
     return result
 
 
@@ -170,7 +149,13 @@ def action_for(item: dict, fund: dict, indexes: dict) -> tuple[str, str]:
             return "buy", f"PE历史分位 {p:.2f}% < 40%"
         return "wait", f"PE历史分位 {p:.2f}% >= 40%，按政策暂停"
 
-    return "wait", "美股指数PE和历史分位未核实，不自动买入"
+    index = indexes[item["index"]["name"]]
+    p = index.get("pe_percentile")
+    if p is None:
+        return "wait", "美股指数PE和历史分位未核实，不自动买入"
+    if p < 50:
+        return "buy", f"滚动PE近10年历史分位 {p:.2f}% < 50%"
+    return "wait", f"滚动PE近10年历史分位 {p:.2f}% >= 50%，按政策暂停"
 
 
 def build_plan(principal: float, funds: list[dict], indexes: dict) -> dict:
