@@ -1,6 +1,7 @@
 {
   "as_of": "2026-07-16",
   "base_currency": "CNY",
+  "building_principal": 10000.0,
   "holdings": [
     {
       "fund_code": "012773",

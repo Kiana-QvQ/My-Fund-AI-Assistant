@@ -1,0 +1,25 @@
+{
+  "as_of": "2026-07-16",
+  "generated_at": "2026-07-16T15:58:40+08:00",
+  "total_cost_basis": 2000.0,
+  "building_principal": 10000.0,
+  "building_progress_percent": 20.0,
+  "overall_decision": "🟢 建仓进度：20.00%；012773 距目标还差 ¥3,100.00",
+  "rows": [
+    {
+      "fund_code": "012773",
+      "name": "嘉实超短债债券A",
+      "cost_basis": 2000.0,
+      "target_percent": 51.0,
+      "target_amount": 5100.0,
+      "current_percent": 20.0,
+      "deviation_percent": -31.0,
+      "shortfall": 3100.0,
+      "decision": "目标未完成",
+      "reason": "目标金额 ¥5,100.00，已投入 ¥2,000.00，还差 ¥3,100.00；申购状态：限大额",
+      "nav": 1.0552,
+      "nav_date": "2026-07-15"
+    }
+  ],
+  "data_status": "market_snapshot.json 已加载"
+}

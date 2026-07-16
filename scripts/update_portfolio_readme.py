@@ -37,22 +37,36 @@ def build_status() -> dict:
     snapshot = load_json(SNAPSHOT_PATH, {})
     holdings = holdings_doc.get("holdings", [])
     total_cost = sum(float(item.get("cost_basis") or 0) for item in holdings)
+    building_principal = float(
+        holdings_doc.get("building_principal") or total_cost or 0
+    )
     as_of = date.today().isoformat()
     rows = []
 
     for item in holdings:
         cost = float(item.get("cost_basis") or 0)
-        current_percent = cost / total_cost * 100 if total_cost else 0
+        current_percent = cost / building_principal * 100 if building_principal else 0
         target_percent = float(item.get("target_percent") or 0)
+        target_amount = building_principal * target_percent / 100
+        shortfall = max(target_amount - cost, 0)
         deviation = current_percent - target_percent
         fund = snapshot.get("funds", {}).get(item["fund_code"], {})
         purchase_status = fund.get("purchase_status", "待刷新")
-        if deviation > 5:
-            decision = "暂不追加"
-            reason = f"当前投入占比 {current_percent:.2f}% 高于目标 {target_percent:.2f}%"
+        if shortfall > 0 and purchase_status in ("开放申购", "限大额"):
+            decision = "目标未完成"
+            reason = (
+                f"目标金额 {money(target_amount)}，已投入 {money(cost)}，"
+                f"还差 {money(shortfall)}；申购状态：{purchase_status}"
+            )
+        elif shortfall > 0:
+            decision = "等待确认"
+            reason = (
+                f"目标金额 {money(target_amount)}，已投入 {money(cost)}，"
+                f"还差 {money(shortfall)}；申购状态：{purchase_status}"
+            )
         elif purchase_status in ("开放申购", "限大额"):
-            decision = "可研究买入"
-            reason = f"申购状态：{purchase_status}"
+            decision = "已达到目标"
+            reason = f"已达到目标金额 {money(target_amount)}，不建议继续追加"
         else:
             decision = "等待确认"
             reason = f"申购状态：{purchase_status}"
@@ -62,8 +76,10 @@ def build_status() -> dict:
                 "name": item["name"],
                 "cost_basis": cost,
                 "target_percent": target_percent,
+                "target_amount": target_amount,
                 "current_percent": current_percent,
                 "deviation_percent": deviation,
+                "shortfall": shortfall,
                 "decision": decision,
                 "reason": reason,
                 "nav": fund.get("nav"),
@@ -82,8 +98,14 @@ def build_status() -> dict:
                     "name": allocation["name"],
                     "cost_basis": 0,
                     "target_percent": allocation["target_percent"],
+                    "target_amount": building_principal
+                    * allocation["target_percent"]
+                    / 100,
                     "current_percent": 0,
                     "deviation_percent": -allocation["target_percent"],
+                    "shortfall": building_principal
+                    * allocation["target_percent"]
+                    / 100,
                     "decision": "可研究买入" if allocation["action"] == "buy" else "可研究加倍",
                     "reason": allocation["reason"],
                     "nav": None,
@@ -93,10 +115,13 @@ def build_status() -> dict:
 
     if rows:
         held = rows[0]
-        if held["decision"] == "暂不追加":
-            overall = f"🟡 今日建议：暂不追加 {held['fund_code']}，先观察其他目标资产估值"
+        if held["shortfall"] > 0:
+            overall = (
+                f"🟢 建仓进度：{total_cost / building_principal * 100:.2f}%"
+                f"；{held['fund_code']} 距目标还差 {money(held['shortfall'])}"
+            )
         else:
-            overall = "🟢 今日建议：存在符合策略的研究买入项，下单前人工核对"
+            overall = "🟡 今日建议：当前记录的底仓已达到目标，新增资金按估值规则判断"
     else:
         overall = "⚪ 今日建议：等待行情快照"
 
@@ -104,6 +129,10 @@ def build_status() -> dict:
         "as_of": as_of,
         "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         "total_cost_basis": total_cost,
+        "building_principal": building_principal,
+        "building_progress_percent": total_cost / building_principal * 100
+        if building_principal
+        else 0,
         "overall_decision": overall,
         "rows": rows,
         "data_status": "market_snapshot.json 已加载"
@@ -117,19 +146,21 @@ def render(status: dict) -> str:
     lines = [
         START,
         f"> 自动更新时间：**{status['as_of']}**",
-        f"> 已记录投入总额：**{money(status['total_cost_basis'])}**",
+        f"> 建仓本金：**{money(status['building_principal'])}** · "
+        f"已投入：**{money(status['total_cost_basis'])}** · "
+        f"整体建仓进度：**{status['building_progress_percent']:.2f}%**",
         f"> {status['overall_decision']}",
-        "> 说明：当前投入占比 = 单项已投入金额 ÷ 已记录持仓投入总额；不是券商账户实时市值占比。",
+        "> 说明：当前投入占比 = 单项已投入金额 ÷ 1万元建仓本金；目标金额 = 建仓本金 × 目标仓位。",
         "",
-        "| 基金 | 代码 | 已投入 | 目标仓位 | 当前投入占比 | 偏离目标 | 今日建议 |",
-        "|---|---:|---:|---:|---:|---:|---|",
+        "| 基金 | 代码 | 已投入 | 目标仓位 | 目标金额 | 当前投入占比 | 还差目标金额 | 今日状态 |",
+        "|---|---:|---:|---:|---:|---:|---:|---|",
     ]
     for row in status["rows"]:
         lines.append(
             f"| {row['name']} | `{row['fund_code']}` | "
             f"{money(row['cost_basis'])} | {row['target_percent']:.2f}% | "
-            f"**{row['current_percent']:.2f}%** | "
-            f"{row['deviation_percent']:+.2f}% | {row['decision']} |"
+            f"{money(row['target_amount'])} | **{row['current_percent']:.2f}%** | "
+            f"{money(row['shortfall'])} | {row['decision']} |"
         )
     lines.extend(
         [
