@@ -1,0 +1,20 @@
+# Secrets and local runtime state
+.env
+.env.*
+!.env.example
+__pycache__/
+*.py[cod]
+.venv/
+
+# Personal data and generated reports
+data/*
+logs/*
+reports/*
+!data/.gitkeep
+!logs/.gitkeep
+!reports/.gitkeep
+
+# Upstream repositories are immutable local checkouts, not part of this project
+integrations/upstream/*
+!integrations/upstream/README.md
+

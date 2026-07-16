@@ -1,0 +1,30 @@
+{
+  "name": "保守进阶型指数定投组合",
+  "base_currency": "CNY",
+  "minimum_holding_years": 3,
+  "target_allocation": {
+    "511360": 0.51,
+    "510300": 0.27,
+    "510500": 0.11,
+    "513500": 0.08,
+    "159941": 0.03
+  },
+  "rules": {
+    "rebalance_period": "annual",
+    "rebalance_deviation": 0.05,
+    "a_share_normal_percentile_below": 40,
+    "a_share_double_invest_percentile_at_or_below": 30,
+    "a_share_pause_percentile_at_or_above": 40,
+    "a_share_take_profit_percentile_at_or_above": 60,
+    "us_normal_percentile_below": 50,
+    "us_pause_percentile_at_or_above": 50,
+    "us_take_profit_percentile_at_or_above": 70,
+    "qdii_premium_pause_above": 0.02
+  },
+  "guardrails": {
+    "paper_or_advice_only": true,
+    "automatic_order_placement": false,
+    "require_human_confirmation": true
+  }
+}
+
