@@ -4,12 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       alert_mode:
-        description: "Email mode: evening / morning / both / skip"
+        description: "Email: auto (buy-signal only) / force / skip"
         required: false
-        default: both
+        default: auto
   schedule:
-    # Split crons so github.event.schedule can distinguish morning vs evening.
-    # 09:00 CST morning (US PE + same-day order); 21:00 CST evening (A-share PE).
+    # 09:00 CST: refresh + at most one buy-action email (if PE below threshold).
+    # 21:00 CST: refresh dashboard only (A-share close PE), no email.
     # GitHub cron may delay by several minutes.
     - cron: "0 1 * * 1-5"
     - cron: "0 13 * * 1-5"
@@ -38,12 +38,14 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             MODE="${{ github.event.inputs.alert_mode }}"
-            MODE="${MODE:-both}"
+            MODE="${MODE:-auto}"
           else
             case "${{ github.event.schedule }}" in
-              "0 1 * * 1-5") MODE="morning" ;;
-              "0 13 * * 1-5") MODE="evening" ;;
-              *) MODE="both" ;;
+              # Morning action window: may send one email if buy signal exists.
+              "0 1 * * 1-5") MODE="auto" ;;
+              # Evening valuation refresh only.
+              "0 13 * * 1-5") MODE="skip" ;;
+              *) MODE="auto" ;;
             esac
           fi
           echo "value=${MODE}" >> "$GITHUB_OUTPUT"
@@ -66,14 +68,17 @@ jobs:
           MAIL_FROM: ${{ secrets.MAIL_FROM }}
           MONTHLY_BUDGET: ${{ secrets.MONTHLY_BUDGET }}
         run: |
-          # Blank GitHub Secrets become ""; coerce to 300 for argparse/shell.
           if [ -z "${MONTHLY_BUDGET}" ]; then
             unset MONTHLY_BUDGET
             BUDGET=300
           else
             BUDGET="${MONTHLY_BUDGET}"
           fi
-          python scripts/send_trade_alert_email.py --mode "${{ steps.mode.outputs.value }}" --monthly "${BUDGET}"
+          EXTRA=""
+          if [ "${{ steps.mode.outputs.value }}" = "force" ]; then
+            EXTRA="--force"
+          fi
+          python scripts/send_trade_alert_email.py --monthly "${BUDGET}" ${EXTRA}
 
       - name: Commit dashboard changes
         run: |
