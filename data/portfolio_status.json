@@ -1,6 +1,6 @@
 {
   "as_of": "2026-07-16",
-  "generated_at": "2026-07-16T09:22:29+00:00",
+  "generated_at": "2026-07-16T14:54:21+00:00",
   "total_cost_basis": 2000.0,
   "building_principal": 10000.0,
   "initial_build_percent": 20.0,
@@ -20,30 +20,30 @@
       "decision": "本期不补满",
       "reason": "短债不看PE；第1月计划金额约 ¥1,020.00，当前已投入 ¥2,000.00，不建议今天一次补足 ¥3,100.00",
       "nav": 1.0552,
-      "nav_date": "2026-07-15"
+      "nav_date": "2026-07-16"
     }
   ],
   "indexes": {
     "沪深300": {
       "index_code": "000300",
-      "date": "2026-07-15",
-      "pe_ttm": 13.77,
-      "pe_percentile": 66.32,
-      "csindex_pe_1": 14.9,
-      "csindex_pe_2": 17.74,
+      "date": "2026-07-16",
+      "pe_ttm": 13.56,
+      "pe_percentile": 63.89,
+      "csindex_pe_1": 14.67,
+      "csindex_pe_2": 17.41,
       "history_start": "2005-04-08",
-      "history_count": 5167,
+      "history_count": 5168,
       "source": "scripts/_tmp_check_pe.py -> AKShare CSIndex + Legu"
     },
     "中证500": {
       "index_code": "000905",
-      "date": "2026-07-15",
-      "pe_ttm": 30.87,
-      "pe_percentile": 65.3,
-      "csindex_pe_1": 30.09,
-      "csindex_pe_2": 32.5,
+      "date": "2026-07-16",
+      "pe_ttm": 30.18,
+      "pe_percentile": 64.32,
+      "csindex_pe_1": 29.41,
+      "csindex_pe_2": 31.73,
       "history_start": "2007-01-15",
-      "history_count": 4738,
+      "history_count": 4739,
       "source": "scripts/_tmp_check_pe.py -> AKShare CSIndex + Legu"
     },
     "标普500": {

@@ -5,7 +5,7 @@
       "fund_code": "012773",
       "name": "嘉实超短债债券A",
       "nav": 1.0552,
-      "nav_date": "2026-07-15",
+      "nav_date": "2026-07-16",
       "purchase_status": "限大额",
       "redemption_status": "开放赎回",
       "daily_limit": 100000000.0,
@@ -15,8 +15,8 @@
     "460300": {
       "fund_code": "460300",
       "name": "华泰柏瑞沪深300ETF联接A",
-      "nav": 1.2039,
-      "nav_date": "2026-07-15",
+      "nav": 1.184,
+      "nav_date": "2026-07-16",
       "purchase_status": "开放申购",
       "redemption_status": "开放赎回",
       "daily_limit": 100000000000.0,
@@ -26,8 +26,8 @@
     "160119": {
       "fund_code": "160119",
       "name": "南方中证500ETF联接(LOF)A",
-      "nav": 2.2994,
-      "nav_date": "2026-07-15",
+      "nav": 2.2479,
+      "nav_date": "2026-07-16",
       "purchase_status": "开放申购",
       "redemption_status": "开放赎回",
       "daily_limit": 100000000000.0,
@@ -37,8 +37,8 @@
     "050025": {
       "fund_code": "050025",
       "name": "博时标普500ETF联接A",
-      "nav": 5.5137,
-      "nav_date": "07-14",
+      "nav": 5.5274,
+      "nav_date": "2026-07-15",
       "purchase_status": "暂停申购",
       "redemption_status": "开放赎回",
       "daily_limit": 100.0,
@@ -48,8 +48,8 @@
     "016452": {
       "fund_code": "016452",
       "name": "南方纳斯达克100指数发起(QDII)A",
-      "nav": 2.3015,
-      "nav_date": "07-14",
+      "nav": 2.2927,
+      "nav_date": "2026-07-15",
       "purchase_status": "限大额",
       "redemption_status": "开放赎回",
       "daily_limit": 10.0,
@@ -60,24 +60,24 @@
   "indexes": {
     "沪深300": {
       "index_code": "000300",
-      "date": "2026-07-15",
-      "pe_ttm": 13.77,
-      "pe_percentile": 66.32,
-      "csindex_pe_1": 14.9,
-      "csindex_pe_2": 17.74,
+      "date": "2026-07-16",
+      "pe_ttm": 13.56,
+      "pe_percentile": 63.89,
+      "csindex_pe_1": 14.67,
+      "csindex_pe_2": 17.41,
       "history_start": "2005-04-08",
-      "history_count": 5167,
+      "history_count": 5168,
       "source": "scripts/_tmp_check_pe.py -> AKShare CSIndex + Legu"
     },
     "中证500": {
       "index_code": "000905",
-      "date": "2026-07-15",
-      "pe_ttm": 30.87,
-      "pe_percentile": 65.3,
-      "csindex_pe_1": 30.09,
-      "csindex_pe_2": 32.5,
+      "date": "2026-07-16",
+      "pe_ttm": 30.18,
+      "pe_percentile": 64.32,
+      "csindex_pe_1": 29.41,
+      "csindex_pe_2": 31.73,
       "history_start": "2007-01-15",
-      "history_count": 4738,
+      "history_count": 4739,
       "source": "scripts/_tmp_check_pe.py -> AKShare CSIndex + Legu"
     },
     "标普500": {
@@ -129,7 +129,7 @@
         "target_percent": 27.0,
         "action": "wait",
         "planned_amount": 0.0,
-        "reason": "PE历史分位 66.32% >= 40%，按政策暂停"
+        "reason": "PE历史分位 63.89% >= 40%，按政策暂停"
       },
       {
         "fund_code": "160119",
@@ -137,7 +137,7 @@
         "target_percent": 11.0,
         "action": "wait",
         "planned_amount": 0.0,
-        "reason": "PE历史分位 65.30% >= 40%，按政策暂停"
+        "reason": "PE历史分位 64.32% >= 40%，按政策暂停"
       },
       {
         "fund_code": "050025",
