@@ -383,20 +383,7 @@ def render(status: dict) -> str:
             if isinstance(percentile_1y, (int, float))
             else "-"
         )
-        # NDX: mark yfinance figures as reference-only so the table is not blank.
         if name == "纳斯达克100" or index.get("reference_only"):
-            if isinstance(pe, (int, float)):
-                pe_text = f"{pe:.2f}※"
-            else:
-                pe_text = "暂缺※"
-            if isinstance(percentile, (int, float)):
-                percentile_text = f"{percentile:.1f}%※"
-            else:
-                percentile_text = "样本累积中※"
-            if isinstance(percentile_1y, (int, float)):
-                percentile_1y_text = f"{percentile_1y:.1f}%※"
-            else:
-                percentile_1y_text = "样本累积中※"
             if not data_date or data_date == "待核验":
                 data_date = index.get("date") or status.get("as_of") or "-"
             if isinstance(premium_pct, (int, float)):
@@ -419,7 +406,8 @@ def render(status: dict) -> str:
             "",
             "> A股近10年分位为主策略；近1年分位用于启动仓（≤30%且未满目标仓15%可先建小仓）。"
             "标普用 Multpl 指数PE，四层校验通过才可交易判断。"
-            "纳指※为 yfinance(QQQ) trailingPE **仅供参考**（ETF≠指数PE），永不自动买入。"
+            "纳指数值来自 QQQ PE（stockanalysis/yfinance）**仅供参考**（ETF≠指数PE），"
+            "今日判断固定为「仅参考·不自动买」。"
             "爬虫失败严禁用过期缓存做买卖。QDII溢价＞2%暂缓买入。"
             "1万元本金启动仓上限约：沪深300 405 / 中证500 165 / 标普500 120 元。",
         ]

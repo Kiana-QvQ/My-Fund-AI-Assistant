@@ -1,7 +1,13 @@
 {
   "ticker": "QQQ",
-  "field": "trailingPE",
-  "updated_at": null,
-  "points": [],
-  "note": "仅作纳指估值参考；ETF PE ≠ 纳斯达克100指数PE，禁止用于自动买卖"
+  "field": "pe_ratio",
+  "updated_at": "2026-07-17T11:47:34+08:00",
+  "points": [
+    {
+      "date": "2026-07-17",
+      "pe_ttm": 32.54
+    }
+  ],
+  "note": "仅作纳指估值参考；ETF PE ≠ 纳斯达克100指数PE，禁止用于自动买卖",
+  "last_source": "stockanalysis.com/etf/qqq PE Ratio"
 }

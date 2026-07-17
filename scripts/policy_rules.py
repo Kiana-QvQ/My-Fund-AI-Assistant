@@ -47,7 +47,7 @@ def classify_index(
         if name == "纳斯达克100":
             return (
                 "reference",
-                "纳斯达克100仅展示 yfinance(QQQ) 参考估值，未核验，禁止自动买入",
+                "纳斯达克100仅展示 QQQ 参考估值（stockanalysis/yfinance），未核验，禁止自动买入",
             )
         # Must be explicitly True — missing field means unverified.
         if verified is not True or tradeable is False:

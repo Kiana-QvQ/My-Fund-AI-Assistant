@@ -302,8 +302,57 @@ def validate_spx(
     return (not errors), errors
 
 
+def _fetch_qqq_pe_stockanalysis() -> float:
+    """Scrape QQQ PE from stockanalysis.com (works when Yahoo is rate-limited)."""
+    html = _http_get("https://stockanalysis.com/etf/qqq/")
+    match = re.search(
+        r">PE Ratio</td>\s*<td[^>]*>\s*([0-9]+(?:\.[0-9]+)?)\s*</td>",
+        html,
+        re.I,
+    )
+    if not match:
+        match = re.search(
+            r"PE Ratio</[^>]*>\s*<[^>]*>\s*([0-9]+(?:\.[0-9]+)?)",
+            html,
+            re.I,
+        )
+    if not match:
+        raise RuntimeError("stockanalysis QQQ 页面未解析到 PE Ratio")
+    pe = round(float(match.group(1)), 2)
+    if pe <= 0 or pe > 200:
+        raise RuntimeError(f"stockanalysis QQQ PE 异常: {pe}")
+    return pe
+
+
+def _fetch_qqq_pe_yfinance() -> float:
+    import yfinance as yf
+
+    info = yf.Ticker("QQQ").info or {}
+    pe_raw = info.get("trailingPE") or info.get("forwardPE")
+    if pe_raw is None:
+        raise RuntimeError("yfinance QQQ 未返回 trailingPE/forwardPE")
+    pe = round(float(pe_raw), 2)
+    if pe <= 0 or pe > 200:
+        raise RuntimeError(f"yfinance QQQ PE 异常: {pe}")
+    return pe
+
+
+def _fetch_qqq_reference_pe() -> tuple[float, str]:
+    """Return (pe, source). Prefer stockanalysis; fall back to yfinance."""
+    errors: list[str] = []
+    for fetcher, label in (
+        (_fetch_qqq_pe_stockanalysis, "stockanalysis.com/etf/qqq PE Ratio"),
+        (_fetch_qqq_pe_yfinance, "yfinance:QQQ.trailingPE"),
+    ):
+        try:
+            return fetcher(), label
+        except Exception as exc:
+            errors.append(f"{label}: {exc}")
+    raise RuntimeError("；".join(errors))
+
+
 def _nasdaq_reference_item() -> dict:
-    """QQQ trailingPE via yfinance — display only; never tradeable."""
+    """QQQ PE for display only — never tradeable / never drives buy signals."""
     as_of = _today().isoformat()
     history_path = ROOT / "data" / "ndx_pe_yfinance_ref.json"
     hist = _load_json(history_path, {"points": [], "ticker": "QQQ"})
@@ -319,7 +368,7 @@ def _nasdaq_reference_item() -> dict:
             points = points[-4500:]
         hist_payload = {
             "ticker": "QQQ",
-            "field": "trailingPE",
+            "field": "pe_ratio",
             "updated_at": datetime.now(CST).isoformat(timespec="seconds"),
             "points": points,
             "note": "仅作纳指估值参考；ETF PE ≠ 纳斯达克100指数PE，禁止用于自动买卖",
@@ -327,14 +376,11 @@ def _nasdaq_reference_item() -> dict:
         }
         _write_json(history_path, hist_payload)
 
-        window_10y = _window_values(points, _today(), years=10)
-        window_1y = _window_values(points, _today(), years=1)
-        percentile = (
-            round(_percentile(window_10y, pe), 2) if len(window_10y) >= 30 else None
-        )
-        percentile_1y = (
-            round(_percentile(window_1y, pe), 2) if len(window_1y) >= 20 else None
-        )
+        # Always publish numeric percentiles from available samples (even 1 point).
+        window_10y = _window_values(points, _today(), years=10) or [pe]
+        window_1y = _window_values(points, _today(), years=1) or [pe]
+        percentile = round(_percentile(window_10y, pe), 2)
+        percentile_1y = round(_percentile(window_1y, pe), 2)
         stale_note = "（缓存回退）" if stale else ""
         return {
             "pe_ttm": pe,
@@ -345,50 +391,27 @@ def _nasdaq_reference_item() -> dict:
             "tradeable": False,
             "reference_only": True,
             "date": as_of,
-            "window": "yfinance QQQ trailingPE 本地累积分位（仅参考）",
+            "window": "QQQ PE 本地累积分位（仅参考）",
             "window_1y": "近1年 QQQ PE 参考分位",
             "source": source_note,
             "history_points": len(window_10y),
             "history_points_1y": len(window_1y),
             "reason": (
-                f"参考：QQQ PE={pe:.2f}{stale_note}"
-                + (
-                    f"，近10年参考分位 {percentile:.2f}%"
-                    if percentile is not None
-                    else "，近10年参考分位样本不足"
-                )
-                + (
-                    f"，近1年参考分位 {percentile_1y:.2f}%"
-                    if percentile_1y is not None
-                    else ""
-                )
-                + "；ETF估值≠指数PE，未核验，禁止自动买入"
+                f"参考：QQQ PE={pe:.2f}{stale_note}，"
+                f"近10年参考分位 {percentile:.2f}%（样本 {len(window_10y)}），"
+                f"近1年参考分位 {percentile_1y:.2f}%（样本 {len(window_1y)}）；"
+                "ETF估值≠指数PE，未核验，禁止自动买入"
             ),
             "validation_errors": ["纳斯达克100仅展示参考估值，不参与自动买卖"],
         }
 
     fetch_error: Exception | None = None
-    for attempt in range(2):
-        try:
-            import time
+    try:
+        pe, source = _fetch_qqq_reference_pe()
+        return _build(pe, source_note=source, stale=False)
+    except Exception as exc:
+        fetch_error = exc
 
-            import yfinance as yf
-
-            if attempt:
-                time.sleep(2)
-            ticker = yf.Ticker("QQQ")
-            info = ticker.info or {}
-            pe_raw = info.get("trailingPE") or info.get("forwardPE")
-            if pe_raw is None:
-                raise RuntimeError("yfinance QQQ 未返回 trailingPE/forwardPE")
-            pe = round(float(pe_raw), 2)
-            if pe <= 0 or pe > 200:
-                raise RuntimeError(f"yfinance QQQ PE 异常: {pe}")
-            return _build(pe, source_note="yfinance:QQQ.trailingPE", stale=False)
-        except Exception as exc:
-            fetch_error = exc
-
-    # Fall back to last cached reference point (display only).
     if points:
         last = points[-1]
         try:
@@ -417,8 +440,8 @@ def _nasdaq_reference_item() -> dict:
         "tradeable": False,
         "reference_only": True,
         "date": as_of,
-        "window": "yfinance QQQ trailingPE（仅参考）",
-        "source": "yfinance:QQQ.trailingPE",
+        "window": "QQQ PE（仅参考）",
+        "source": "stockanalysis/yfinance",
         "reason": f"纳指参考估值获取失败：{fetch_error}；仍禁止自动买入",
         "validation_errors": [str(fetch_error)],
     }
@@ -506,10 +529,10 @@ def refresh_us_pe(*, persist: bool = True, force_monthly_refresh: bool = False) 
     snapshot = {
         "as_of": as_of,
         "updated_at": datetime.now(CST).isoformat(timespec="seconds"),
-        "window": "标普：Multpl近10年；纳指：yfinance QQQ参考(未核验)",
+        "window": "标普：Multpl近10年；纳指：QQQ参考(未核验)",
         "source": (
             "multpl.com S&P 500 PE (current + monthly history) + local percentile; "
-            "NDX yfinance QQQ trailingPE reference-only"
+            "NDX QQQ PE via stockanalysis/yfinance reference-only"
         ),
         "indexes": indexes,
         "alerts": alerts,

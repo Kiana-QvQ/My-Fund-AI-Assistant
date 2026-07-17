@@ -1,8 +1,8 @@
 {
   "as_of": "2026-07-17",
-  "updated_at": "2026-07-17T11:28:13+08:00",
-  "window": "标普：Multpl近10年；纳指：yfinance QQQ参考(未核验)",
-  "source": "multpl.com S&P 500 PE (current + monthly history) + local percentile; NDX yfinance QQQ trailingPE reference-only",
+  "updated_at": "2026-07-17T11:47:34+08:00",
+  "window": "标普：Multpl近10年；纳指：QQQ参考(未核验)",
+  "source": "multpl.com S&P 500 PE (current + monthly history) + local percentile; NDX QQQ PE via stockanalysis/yfinance reference-only",
   "indexes": {
     "标普500": {
       "pe_ttm": 32.41,
@@ -20,24 +20,27 @@
       "history_points_1y": 12,
       "history_from_cache": true,
       "current_timestamp": "4:00 PM EDT, Thu Jul 16",
-      "fetched_at": "2026-07-17T11:28:08+08:00",
+      "fetched_at": "2026-07-17T11:47:33+08:00",
       "reason": "Multpl 指数PE=32.41，近10年分位 93.33% （样本 120），近1年分位 100.00%（月度序列来自缓存）",
       "validation_errors": []
     },
     "纳斯达克100": {
-      "pe_ttm": null,
-      "pe_percentile": null,
-      "pe_percentile_1y": null,
+      "pe_ttm": 32.54,
+      "pe_percentile": 100.0,
+      "pe_percentile_1y": 100.0,
       "verified": false,
-      "status": "reference_unavailable",
+      "status": "reference_only",
       "tradeable": false,
       "reference_only": true,
       "date": "2026-07-17",
-      "window": "yfinance QQQ trailingPE（仅参考）",
-      "source": "yfinance:QQQ.trailingPE",
-      "reason": "纳指参考估值获取失败：Too Many Requests. Rate limited. Try after a while.；仍禁止自动买入",
+      "window": "QQQ PE 本地累积分位（仅参考）",
+      "window_1y": "近1年 QQQ PE 参考分位",
+      "source": "stockanalysis.com/etf/qqq PE Ratio",
+      "history_points": 1,
+      "history_points_1y": 1,
+      "reason": "参考：QQQ PE=32.54，近10年参考分位 100.00%（样本 1），近1年参考分位 100.00%（样本 1）；ETF估值≠指数PE，未核验，禁止自动买入",
       "validation_errors": [
-        "Too Many Requests. Rate limited. Try after a while."
+        "纳斯达克100仅展示参考估值，不参与自动买卖"
       ]
     }
   },

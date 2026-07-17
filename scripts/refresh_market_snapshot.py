@@ -37,6 +37,7 @@ CST = timezone(timedelta(hours=8))
 def today_cst() -> date:
     return datetime.now(CST).date()
 
+
 FUNDS = [
     {
         "fund_code": "012773",
@@ -376,6 +377,11 @@ def main() -> None:
     funds = fund_snapshot()
     indexes, premiums, us_meta = index_snapshot()
     holdings_cost = load_holdings_cost()
+    if HOLDINGS_PATH.is_file():
+        holdings_doc = json.loads(HOLDINGS_PATH.read_text(encoding="utf-8"))
+        principal = float(holdings_doc.get("building_principal") or args.principal)
+    else:
+        principal = args.principal
     items = []
     for item in FUNDS:
         current = dict(item)
@@ -389,7 +395,7 @@ def main() -> None:
         "qdii_premiums": premiums,
         "us_meta": us_meta,
         "build_plan": build_plan(
-            args.principal, items, indexes, holdings_cost, policy
+            principal, items, indexes, holdings_cost, policy
         ),
     }
     output_path = Path(args.output)
