@@ -12,46 +12,97 @@
   "rules": {
     "rebalance_period": "annual",
     "rebalance_deviation": 0.05,
-    "a_share_double_invest_percentile_below": 30,
-    "a_share_normal_percentile_below": 40,
-    "a_share_half_percentile_below": 60,
+    "a_share_triple_percentile_below": 30,
+    "a_share_triple_fraction": 3.0,
+    "a_share_double_invest_percentile_below": 40,
+    "a_share_double_fraction": 2.0,
+    "a_share_normal_percentile_below": 60,
+    "a_share_half_percentile_below": 90,
     "a_share_half_fraction": 0.5,
-    "a_share_take_profit_percentile_at_or_above": 60,
-    "us_normal_percentile_below": 50,
-    "us_half_percentile_below": 70,
+    "a_share_take_profit_percentile_at_or_above": 90,
+    "us_triple_percentile_below": 40,
+    "us_triple_fraction": 3.0,
+    "us_double_percentile_below": 50,
+    "us_double_fraction": 2.0,
+    "us_normal_percentile_below": 70,
+    "us_half_percentile_below": 90,
     "us_half_fraction": 0.5,
-    "us_take_profit_percentile_at_or_above": 70,
+    "us_take_profit_percentile_at_or_above": 90,
     "qdii_premium_pause_above": 0.02,
     "qdii_premium_resume_below": 0.01,
-    "note": "平衡型分档：A股近10年PE ＜30%加倍、30%~40%满额、40%~60%半额、≥60%停买；美股 ＜50%满额、50%~70%半额、≥70%停买。微建仓见 bootstrap.by_index（分指数阈值，不与十年主力档混用同一门槛）。"
+    "note": "十年定投四档：A股 ＜30%→300%、30%~40%→200%、40%~60%→100%、60%~90%→50%、≥90%停买；美股 ＜40%→300%、40%~50%→200%、50%~70%→100%、70%~90%→50%、≥90%停买。1年建仓三档见 bootstrap。"
   },
   "bootstrap": {
     "enabled": true,
-    "tranche_fraction_of_target": 0.05,
-    "max_fraction_of_target": 0.10,
+    "max_fraction_of_target": 0.30,
     "min_amount": 10,
-    "deep_drawdown_observe_at_or_above": 0.20,
+    "deep_drawdown_observe_at_or_above": 0.25,
     "indexes": ["沪深300", "中证500", "标普500"],
     "exclude": ["纳斯达克100"],
     "by_index": {
       "沪深300": {
-        "percentile_1y_at_or_below": 60,
-        "require_drawdown_from_52w_high_at_or_above": 0.06,
-        "max_10y_percentile_below": 85
+        "max_10y_percentile_below": 95,
+        "tiers": [
+          {
+            "percentile_1y_at_or_below": 50,
+            "fraction": 1.0,
+            "drawdown_at_or_above": 0.05
+          },
+          {
+            "percentile_1y_at_or_below": 70,
+            "fraction": 0.5,
+            "drawdown_at_or_above": 0.04
+          },
+          {
+            "percentile_1y_at_or_below": 90,
+            "fraction": 0.25,
+            "drawdown_at_or_above": 0.03
+          }
+        ]
       },
       "中证500": {
-        "percentile_1y_at_or_below": 70,
-        "require_drawdown_from_52w_high_at_or_above": 0.08,
-        "max_10y_percentile_below": 85
+        "max_10y_percentile_below": 95,
+        "tiers": [
+          {
+            "percentile_1y_at_or_below": 55,
+            "fraction": 1.0,
+            "drawdown_at_or_above": 0.06
+          },
+          {
+            "percentile_1y_at_or_below": 75,
+            "fraction": 0.5,
+            "drawdown_at_or_above": 0.05
+          },
+          {
+            "percentile_1y_at_or_below": 90,
+            "fraction": 0.25,
+            "drawdown_at_or_above": 0.04
+          }
+        ]
       },
       "标普500": {
-        "percentile_1y_at_or_below": 60,
-        "require_drawdown_from_52w_high_at_or_above": 0.08,
         "require_verified": true,
-        "qdii_premium_at_or_below": 0.02
+        "qdii_premium_at_or_below": 0.02,
+        "tiers": [
+          {
+            "percentile_1y_at_or_below": 50,
+            "fraction": 1.0,
+            "drawdown_at_or_above": 0.05
+          },
+          {
+            "percentile_1y_at_or_below": 70,
+            "fraction": 0.5,
+            "drawdown_at_or_above": 0.04
+          },
+          {
+            "percentile_1y_at_or_below": 85,
+            "fraction": 0.25,
+            "drawdown_at_or_above": 0.03
+          }
+        ]
       }
     },
-    "note": "分指数微建仓（非统一门槛）：沪深300 1年≤60%+回撤≥6%+十年＜85%；中证500 1年≤70%+回撤≥8%+十年＜85%；标普须核验且溢价≤2%、1年≤60%+回撤≥8%；纳指不自动。单次约目标仓5%，累计最多10%。回撤≥20%且十年仍在停买区则只观察。点位不单独触发。短债012773不看PE/回撤。1万元微仓：单次约135/55/40，累计上限约270/110/80。"
+    "note": "1年建仓三档（按月度份额比例，可与十年定投取较高者）：100%/50%/25%。沪深：1年≤50/70/90 + 回撤≥5/4/3%；中证阈值略宽；标普须核验且溢价≤2%。累计微仓上限约目标仓30%。纳指不自动。点位不单独触发。"
   },
   "guardrails": {
     "paper_or_advice_only": true,

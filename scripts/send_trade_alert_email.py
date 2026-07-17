@@ -134,8 +134,16 @@ def collect_signals(snapshot: dict, monthly: float, policy: dict) -> dict:
         )
         month_slice = round(monthly * weight, 2)
         if action == "bootstrap":
-            amount = bootstrap_planned_amount(held_cost, target_amount, policy)
+            amount = bootstrap_planned_amount(
+                held_cost,
+                target_amount,
+                policy,
+                month_slice=month_slice,
+                fraction=0.25,
+            )
             has_bootstrap = True
+        elif action == "triple":
+            amount = round(month_slice * 3, 2)
         elif action == "double":
             amount = round(month_slice * 2, 2)
         elif action == "half":
@@ -180,7 +188,7 @@ def collect_signals(snapshot: dict, monthly: float, policy: dict) -> dict:
                 if err not in alert_lines:
                     alert_lines.append(str(err))
 
-        if action in ("buy", "double", "half", "bootstrap"):
+        if action in ("buy", "double", "triple", "half", "bootstrap"):
             buy_lines.append(f"  · {fund_name}（{code}）约 {amount:.2f} 元（{label}）")
             if name in A_SHARE:
                 buy_a.append(name)
@@ -188,6 +196,10 @@ def collect_signals(snapshot: dict, monthly: float, policy: dict) -> dict:
                 buy_us.append(name)
             if action in ("bootstrap", "half"):
                 paused_amount += max(month_slice - amount, 0.0)
+            elif action in ("double", "triple"):
+                pass
+            else:
+                pass
         elif action == "take_profit" and held_cost > 0:
             take_profit_lines.append(
                 f"  · {fund_name}（{code}）建议赎回约 "
@@ -271,14 +283,14 @@ def build_body(
         if evening_focus:
             if data["buy_a"]:
                 parts.append(
-                    "A股微建仓/买入/半额" if data.get("has_bootstrap") else "A股买入/半额"
+                    "A股1年建仓/买入/半额" if data.get("has_bootstrap") else "A股买入/半额"
                 )
             if data.get("take_profit_a"):
                 parts.append("A股止盈")
         else:
             if data["has_buy"]:
                 parts.append(
-                    "微建仓/买入/半额" if data.get("has_bootstrap") else "买入/半额"
+                    "1年建仓/买入/半额" if data.get("has_bootstrap") else "买入/半额"
                 )
             if data["has_take_profit"]:
                 parts.append("止盈")
@@ -363,9 +375,9 @@ cutoff_time：{timing["cutoff_time"]}
 {focus_note}
 
 【策略时点】
-1）A股近10年分位：＜30%加倍；30%~40%满额；40%~60%半额；≥60%停买/止盈观察
-2）标普500（Multpl核验通过后）：＜{data["us_buy"]:.0f}%满额；50%~70%半额；≥70%停买/止盈观察
-3）微建仓例外：{data.get('boot_line', '')}（纳指除外）
+1）A股近10年定投：＜30%→300%；30%~40%→200%；40%~60%→100%；60%~90%→50%；≥90%停买/止盈
+2）标普500（Multpl核验通过后）：＜40%→300%；40%~50%→200%；50%~70%→100%；70%~90%→50%；≥90%停买
+3）1年建仓三档（与十年取高）：{data.get('boot_line', '')}
 4）纳斯达克100：估值未核验，永不自动买入
 5）QDII 场内溢价＞2% 暂缓买入
 

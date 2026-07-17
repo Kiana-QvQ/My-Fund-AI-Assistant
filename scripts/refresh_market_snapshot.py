@@ -283,6 +283,7 @@ def action_for(
         return "take_profit", f"{reason}；建议赎回约 {low:.2f}~{high:.2f} 元"
     if signal in (
         "buy",
+        "triple",
         "double",
         "half",
         "bootstrap",
@@ -331,9 +332,20 @@ def build_plan(
             if action == "take_profit":
                 take_profit_notes.append(reason)
             planned = 0.0
+        elif action == "triple":
+            planned = base * float(r.get("a_share_triple_fraction", 3.0))
+            if item["asset"] == "us":
+                planned = base * float(r.get("us_triple_fraction", 3.0))
+            double_extra += planned - base
+            reason = f"{reason}；超额部分从短债底仓调拨"
         elif action == "double":
-            planned = base * 2
-            double_extra += base
+            planned = base * float(
+                r.get(
+                    "us_double_fraction" if item["asset"] == "us" else "a_share_double_fraction",
+                    2.0,
+                )
+            )
+            double_extra += planned - base
             reason = f"{reason}；加倍部分从短债底仓调拨"
         elif action == "half":
             if item["asset"] == "us":
@@ -345,24 +357,26 @@ def build_plan(
             reason = f"{reason}；未用额度转入短债/备用金"
         elif action == "bootstrap":
             remaining = bootstrap_remaining(held, target_amount, policy)
-            planned = bootstrap_planned_amount(held, target_amount, policy)
+            planned = bootstrap_planned_amount(
+                held, target_amount, policy, month_slice=base, fraction=0.25
+            )
             if planned <= 0:
                 held_back += base
                 planned = 0.0
                 action = "wait"
-                reason = f"{reason}；微建仓额度已用尽"
+                reason = f"{reason}；1年建仓额度已用尽"
             else:
                 bootstrap_notes.append(
-                    f"{item['name']} 微建仓约 {planned:.2f} 元"
-                    f"（单次上限/剩余额度 {remaining:.2f}）"
+                    f"{item['name']} 1年档约 {planned:.2f} 元（剩余额度 {remaining:.2f}）"
                 )
-                # Micro replaces this sleeve's first-month DCA slice; leftover → short bond.
                 if base > planned:
                     held_back += base - planned
                 elif planned > base:
-                    # Tranche may exceed first-month sleeve; pull from short-bond sleeve.
                     double_extra += planned - base
                     reason = f"{reason}；超出首月份额部分从短债调拨"
+        elif action == "buy":
+            planned = base
+            reason = f"{reason}"
         allocations.append(
             {
                 "fund_code": item["fund_code"],

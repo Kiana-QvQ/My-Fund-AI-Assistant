@@ -115,7 +115,7 @@ def summarize_equity(indexes: dict, holdings_cost: dict[str, float], principal: 
         notes.append(f"{name}：{label}{suffix}")
         if action == "bootstrap":
             bootstrap.append(name)
-        elif action in ("buy", "double"):
+        elif action in ("buy", "double", "triple"):
             buyable.append(name)
         elif action == "half":
             half.append(name)
@@ -129,9 +129,9 @@ def summarize_equity(indexes: dict, holdings_cost: dict[str, float], principal: 
             # reference / wait / overvalued_watch
             paused.append(name)
     if buyable or bootstrap:
-        tone = "🟢 权益有可买/微建仓信号"
+        tone = "🟢 权益有可买/1年建仓信号"
     elif half:
-        tone = "🟢 权益半额基础定投"
+        tone = "🟢 权益半额维持定投"
     elif take_profit:
         tone = "🟠 权益进入止盈观察"
     elif blocked:
@@ -221,11 +221,20 @@ def build_status() -> dict:
     for allocation in allocations:
         if allocation["fund_code"] in held_codes:
             continue
-        if allocation["action"] in ("buy", "double", "half", "take_profit"):
+        if allocation["action"] in (
+            "buy",
+            "double",
+            "triple",
+            "half",
+            "bootstrap",
+            "take_profit",
+        ):
             decision = {
                 "buy": "可研究满额定投",
-                "double": "可研究加倍",
-                "half": "半额基础定投",
+                "triple": "可研究3倍定投",
+                "double": "可研究2倍定投",
+                "half": "半额维持定投",
+                "bootstrap": "1年档25%建仓",
                 "take_profit": "建议分批止盈",
             }[allocation["action"]]
             rows.append(
@@ -440,16 +449,15 @@ def render(status: dict) -> str:
     lines.extend(
         [
             "",
-            "> A股近10年分位分档（平衡型）：＜30%加倍 / 30%~40%满额 / 40%~60%半额 / ≥60%停买与止盈观察；"
-            "美股：＜50%满额 / 50%~70%半额 / ≥70%停买。"
+            "> A股近10年定投（放宽）：＜30%→300% / 30%~40%→200% / 40%~60%→100% / 60%~90%→50% / ≥90%停买；"
+            "美股：＜40%→300% / 40%~50%→200% / 50%~70%→100% / 70%~90%→50% / ≥90%停买。"
             f"{bootstrap_summary_line(load_policy())}。"
-            "回撤≥20%但十年PE仍在停买区则只观察、不因跌幅抄底；**指数绝对点位不单独触发买入**。"
+            "回撤很深且十年已在停买区则只观察、不因跌幅抄底；**指数绝对点位不单独触发买入**。"
             "标普用 Multpl 指数PE，四层校验通过才可交易判断。"
             "纳指 PE 来自 QQQ（stockanalysis/yfinance）**仅供参考**；样本不足时分位显示「无统计分位」。"
-            "无持仓时高估只观察、不提示止盈（但仍可按微建仓规则小额试仓）。"
             "爬虫失败严禁用过期缓存做买卖。QDII溢价＞2%暂缓买入。"
             "短债012773不看PE/回撤，按建仓计划与申购状态。"
-            "1万元本金微仓：单次约沪深300 135 / 中证500 55 / 标普500 40；累计上限约 270 / 110 / 80 元。",
+            "每月按交易日定时判断一次（非每日频繁切换）。",
         ]
     )
     lines.extend(

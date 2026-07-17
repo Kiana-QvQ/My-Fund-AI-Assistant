@@ -29,8 +29,8 @@ class PolicyRulesTests(unittest.TestCase):
     def test_no_take_profit_without_holding(self) -> None:
         action, reason = resolve_action(
             "沪深300",
-            80.0,
-            percentile_1y=90.0,
+            92.0,
+            percentile_1y=95.0,
             policy=self.policy,
             held_cost=0.0,
             target_amount=2700.0,
@@ -41,8 +41,8 @@ class PolicyRulesTests(unittest.TestCase):
     def test_take_profit_with_holding(self) -> None:
         action, reason = resolve_action(
             "沪深300",
-            80.0,
-            percentile_1y=90.0,
+            92.0,
+            percentile_1y=95.0,
             policy=self.policy,
             held_cost=500.0,
             target_amount=2700.0,
@@ -229,15 +229,15 @@ class EmailAndReadmeSignalTests(unittest.TestCase):
             "indexes": {
                 "沪深300": {
                     "pe_ttm": 13.0,
-                    "pe_percentile": 65.0,
-                    "pe_percentile_1y": 50.0,
+                    "pe_percentile": 92.0,
+                    "pe_percentile_1y": 95.0,
                     "verified": True,
                     "tradeable": True,
                 },
                 "中证500": {
                     "pe_ttm": 20.0,
-                    "pe_percentile": 65.0,
-                    "pe_percentile_1y": 50.0,
+                    "pe_percentile": 92.0,
+                    "pe_percentile_1y": 95.0,
                     "verified": True,
                     "tradeable": True,
                 },
