@@ -1,12 +1,13 @@
 {
-  "as_of": "2026-07-16",
-  "generated_at": "2026-07-16T14:54:21+00:00",
+  "as_of": "2026-07-17",
+  "generated_at": "2026-07-17T09:46:10+08:00",
+  "updated_at_display": "2026-07-17 09:46:10 CST",
   "total_cost_basis": 2000.0,
   "building_principal": 10000.0,
   "initial_build_percent": 20.0,
   "first_month_budget": 2000.0,
   "building_progress_percent": 20.0,
-  "overall_decision": "🟡 今日短债建议：不按PE判断，也不要求一次补足；012773 长期目标还差 ¥3,100.00",
+  "overall_decision": "🟡 观望（短债本期不催补）：短债不看 PE，第1月也不要求一次补满；012773 长期目标还差 ¥3,100.00",
   "rows": [
     {
       "fund_code": "012773",

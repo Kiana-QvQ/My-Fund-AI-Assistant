@@ -4,8 +4,15 @@ from __future__ import annotations
 
 import json
 import sys
-from datetime import date, datetime
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
+
+try:
+    from zoneinfo import ZoneInfo
+
+    CST = ZoneInfo("Asia/Shanghai")
+except Exception:  # pragma: no cover - environments without tzdata
+    CST = timezone(timedelta(hours=8))
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,6 +39,15 @@ def money(value: float) -> str:
     return f"¥{value:,.2f}"
 
 
+def now_cst() -> datetime:
+    return datetime.now(CST)
+
+
+def format_update_time(when: datetime) -> str:
+    local = when.astimezone(CST) if when.tzinfo else when.replace(tzinfo=CST)
+    return local.strftime("%Y-%m-%d %H:%M:%S CST")
+
+
 def build_status() -> dict:
     holdings_doc = load_json(HOLDINGS_PATH, {"holdings": []})
     snapshot = load_json(SNAPSHOT_PATH, {})
@@ -42,7 +58,8 @@ def build_status() -> dict:
     )
     initial_build_percent = float(holdings_doc.get("initial_build_percent") or 20)
     first_month_budget = building_principal * initial_build_percent / 100
-    as_of = date.today().isoformat()
+    generated = now_cst()
+    as_of = generated.date().isoformat()
     rows = []
 
     for item in holdings:
@@ -126,22 +143,23 @@ def build_status() -> dict:
         held = rows[0]
         if held["decision"] == "本期不补满":
             overall = (
-                f"🟡 今日短债建议：不按PE判断，也不要求一次补足；"
+                f"🟡 观望（短债本期不催补）：短债不看 PE，第1月也不要求一次补满；"
                 f"{held['fund_code']} 长期目标还差 {money(held['shortfall'])}"
             )
         elif held["shortfall"] > 0:
             overall = (
-                f"🟢 建仓进度：{total_cost / building_principal * 100:.2f}%"
+                f"🟢 可继续建仓：进度 {total_cost / building_principal * 100:.2f}%"
                 f"；{held['fund_code']} 距目标还差 {money(held['shortfall'])}"
             )
         else:
-            overall = "🟡 今日建议：当前记录的底仓已达到目标，新增资金按估值规则判断"
+            overall = "🟡 观望（底仓已达标）：当前记录的底仓已达到目标，新增资金按估值规则判断"
     else:
-        overall = "⚪ 今日建议：等待行情快照"
+        overall = "⚪ 等待数据：尚未生成行情快照"
 
     status = {
         "as_of": as_of,
-        "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "generated_at": generated.isoformat(timespec="seconds"),
+        "updated_at_display": format_update_time(generated),
         "total_cost_basis": total_cost,
         "building_principal": building_principal,
         "initial_build_percent": initial_build_percent,
@@ -160,13 +178,15 @@ def build_status() -> dict:
 
 
 def render(status: dict) -> str:
+    update_time = status.get("updated_at_display") or status.get("as_of", "")
     lines = [
         START,
-        f"> 自动更新时间：**{status['as_of']}**",
+        f"> 自动更新时间：**{update_time}**",
         f"> 建仓本金：**{money(status['building_principal'])}** · "
         f"已投入：**{money(status['total_cost_basis'])}** · "
         f"整体建仓进度：**{status['building_progress_percent']:.2f}%**",
         f"> {status['overall_decision']}",
+        "> 状态灯：🟢 可继续建仓 · 🟡 观望/不催补 · ⚪ 等待数据",
         "> 说明：当前投入占比 = 单项已投入金额 ÷ 1万元建仓本金；目标金额 = 建仓本金 × 目标仓位。",
         "",
         "| 基金 | 代码 | 已投入 | 目标仓位 | 目标金额 | 当前投入占比 | 还差目标金额 | 今日状态 |",
