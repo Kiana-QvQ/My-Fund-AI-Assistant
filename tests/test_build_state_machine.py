@@ -169,6 +169,63 @@ class ObserveStateTests(unittest.TestCase):
         )
         self.assertEqual(obs["state"], STATE_DATA_FAIL)
 
+    def test_premium_beats_drawdown_fetch_fail(self) -> None:
+        """Regression: high QDII premium must not be masked as 数据源失败."""
+        obs = observe_build_state(
+            "标普500",
+            percentile=50.0,
+            percentile_1y=40.0,
+            drawdown_from_52w_high=None,
+            premium=0.05,
+            drawdown_status="fetch_failed",
+            verified=True,
+            tradeable=True,
+            policy=self.policy,
+            held_cost=0.0,
+            target_amount=800.0,
+        )
+        self.assertEqual(obs["state"], STATE_PREMIUM)
+
+    def test_drawdown_fetch_fail_without_premium(self) -> None:
+        obs = observe_build_state(
+            "沪深300",
+            percentile=80.0,
+            percentile_1y=85.0,
+            drawdown_from_52w_high=None,
+            drawdown_status="fetch_failed",
+            policy=self.policy,
+            held_cost=0.0,
+            target_amount=2700.0,
+        )
+        self.assertEqual(obs["state"], STATE_DATA_FAIL)
+
+    def test_holiday_does_not_count_confirm_day(self) -> None:
+        base = {
+            "current_state": STATE_UNBUYABLE,
+            "candidate_state": None,
+            "candidate_count": 0,
+            "last_notified_state": STATE_UNBUYABLE,
+            "last_notified_at": None,
+        }
+        m1, n1, _ = advance_machine(
+            base, STATE_SOFT_25, confirm_needed=2, count_observation=False
+        )
+        self.assertFalse(n1)
+        self.assertEqual(m1["candidate_state"], STATE_SOFT_25)
+        self.assertEqual(m1["candidate_count"], 0)
+
+        m2, n2, _ = advance_machine(
+            m1, STATE_SOFT_25, confirm_needed=2, count_observation=True
+        )
+        self.assertFalse(n2)
+        self.assertEqual(m2["candidate_count"], 1)
+
+        m3, n3, _ = advance_machine(
+            m2, STATE_SOFT_25, confirm_needed=2, count_observation=True
+        )
+        self.assertTrue(n3)
+        self.assertEqual(m3["current_state"], STATE_SOFT_25)
+
 
 if __name__ == "__main__":
     unittest.main()

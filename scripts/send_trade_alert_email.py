@@ -33,9 +33,12 @@ from alert_state import (  # noqa: E402
     save_alert_state,
 )
 from build_state_machine import (  # noqa: E402
+    FRAC_TO_STATE,
     advance_machine,
     confirm_days,
     fingerprint_from_machines,
+    is_buyable,
+    state_from_fraction,
 )
 from investment_plan import (  # noqa: E402
     allocate_dca_plan,
@@ -563,8 +566,6 @@ def main() -> None:
     old_machines = state.get("build_machines") or {}
     # Migrate legacy fingerprint → machine baseline (no email storm).
     if not old_machines and state.get("build"):
-        from build_state_machine import state_from_fraction  # noqa: WPS433
-
         legacy_label_map = {
             "溢价暂缓": "QDII溢价阻断",
             "QDII溢价阻断": "QDII溢价阻断",
@@ -600,6 +601,8 @@ def main() -> None:
 
     needed = confirm_days(policy)
     force_build = args.mode == "force_build"
+    # Upgrade/recovery counters only advance on A-share trading days.
+    count_observation = bool(is_a_share_trading_day(today))
     new_machines: dict = {}
     build_changes: list[str] = []
     notify_build = False
@@ -611,19 +614,39 @@ def main() -> None:
             observed,
             confirm_needed=needed,
             force_notify=force_build,
+            count_observation=count_observation,
         )
         new_machines[name] = machine
-        # Surface pending confirmation in logs / line meta
         ln["machine"] = machine
+        ln["observed_state"] = observed
+        confirmed = machine.get("current_state") or observed
+        # Display confirmed state; keep observed for pending logs.
+        ln["state"] = confirmed
+        ln["tier_label"] = confirmed
         if machine.get("candidate_state"):
             ln["pending_confirm"] = (
                 f"候选 {machine['candidate_state']} "
-                f"({machine.get('candidate_count')}/{needed})"
+                f"({machine.get('candidate_count')}/{needed}"
+                f"{'' if count_observation else ',休市不计日'})"
             )
+            # Pending upgrade/recovery: do not advertise the unconfirmed tier.
+            if confirmed != observed:
+                if not is_buyable(confirmed):
+                    ln["active"] = False
+                    ln["amount"] = 0.0
+                    ln["fraction"] = 0.0
+                else:
+                    state_to_frac = {v: k for k, v in FRAC_TO_STATE.items()}
+                    conf_frac = state_to_frac.get(confirmed)
+                    obs_frac = float(ln.get("fraction") or 0)
+                    if conf_frac is not None and obs_frac > 0:
+                        ln["amount"] = round(
+                            float(ln.get("amount") or 0) * conf_frac / obs_frac, 2
+                        )
+                        ln["fraction"] = conf_frac
         if should_notify and change:
             build_changes.append(f"{name}: {change}")
             notify_build = True
-            # Align line display to confirmed/current machine state for email
             ln["state"] = machine.get("current_state") or observed
             ln["tier_label"] = ln["state"]
 

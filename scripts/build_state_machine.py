@@ -163,17 +163,14 @@ def observe_build_state(
     if premium_cap is None and name in US:
         premium_cap = float(r.get("qdii_premium_pause_above", 0.02))
 
-    # --- data failure (immediate risk) ---
-    if pe_status in ("fetch_failed", "error") or (
-        drawdown_status == "fetch_failed"
-        and percentile_1y is not None
-    ):
+    # --- hard data failures (cannot know valuation at all) ---
+    if pe_status in ("fetch_failed", "error"):
         base.update(
             {
                 "state": STATE_DATA_FAIL,
                 "tier_label": STATE_DATA_FAIL,
                 "action": "data_fail",
-                "reason": "估值/回撤数据源失败，建仓判断暂停（fail-closed）",
+                "reason": "估值数据源失败，建仓判断暂停（fail-closed）",
             }
         )
         return base
@@ -200,7 +197,7 @@ def observe_build_state(
         )
         return base
 
-    # --- QDII premium risk ---
+    # --- actionable risk first (do not mask with drawdown fetch noise) ---
     if name in US and premium_cap is not None and premium is not None and premium > premium_cap:
         base.update(
             {
@@ -214,7 +211,6 @@ def observe_build_state(
         )
         return base
 
-    # --- take-profit / overvalued ---
     if percentile is not None and percentile >= pause_at:
         base.update(
             {
@@ -235,6 +231,18 @@ def observe_build_state(
                 "tier_label": STATE_DATA_FAIL,
                 "action": "data_fail",
                 "reason": "缺少近1年PE分位，建仓判断暂停",
+            }
+        )
+        return base
+
+    # Drawdown fetch failure only blocks when we still need DD to decide a buy tier.
+    if drawdown_from_52w_high is None and drawdown_status == "fetch_failed":
+        base.update(
+            {
+                "state": STATE_DATA_FAIL,
+                "tier_label": STATE_DATA_FAIL,
+                "action": "data_fail",
+                "reason": "缺少相对52周回撤且数据源失败，建仓判断暂停（fail-closed）",
             }
         )
         return base
@@ -313,10 +321,15 @@ def advance_machine(
     confirm_needed: int = 2,
     now: datetime | None = None,
     force_notify: bool = False,
+    count_observation: bool = True,
 ) -> tuple[dict[str, Any], bool, str | None]:
     """Advance one sleeve machine.
 
     Returns (new_machine, should_notify, change_line).
+
+    ``count_observation``: when False (e.g. A-share holiday refresh), risk
+    transitions still apply immediately, but upgrade/recovery confirm counters
+    do not increment — matches「连续 N 个交易日确认」.
     """
     now = now or datetime.now(CST)
     m = dict(empty_machine())
@@ -358,6 +371,12 @@ def advance_machine(
         return m, True, change
 
     if needs_confirm(current, observed_state):
+        if not count_observation:
+            # Remember intent, but wait for a trading day to start/continue counting.
+            if m.get("candidate_state") != observed_state:
+                m["candidate_state"] = observed_state
+                m["candidate_count"] = 0
+            return m, False, None
         if m.get("candidate_state") == observed_state:
             count = int(m.get("candidate_count") or 0) + 1
         else:
@@ -373,8 +392,6 @@ def advance_machine(
             return m, True, f"{change}（连续{confirm_needed}日确认）"
         return m, False, None
 
-    # Same-severity non-buyable drift (e.g. 不可买 reason change): treat as immediate
-    # only when state id actually differs — already handled above.
     # Fallback: accept immediately for any other transition.
     m["current_state"] = observed_state
     m["candidate_state"] = None
