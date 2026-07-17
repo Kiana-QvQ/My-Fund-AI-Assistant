@@ -285,6 +285,8 @@ def action_for(
         "buy",
         "triple",
         "double",
+        "sesqui",
+        "light",
         "half",
         "bootstrap",
         "premium_block",
@@ -332,29 +334,15 @@ def build_plan(
             if action == "take_profit":
                 take_profit_notes.append(reason)
             planned = 0.0
-        elif action == "triple":
-            planned = base * float(r.get("a_share_triple_fraction", 3.0))
-            if item["asset"] == "us":
-                planned = base * float(r.get("us_triple_fraction", 3.0))
-            double_extra += planned - base
-            reason = f"{reason}；超额部分从短债底仓调拨"
-        elif action == "double":
-            planned = base * float(
-                r.get(
-                    "us_double_fraction" if item["asset"] == "us" else "a_share_double_fraction",
-                    2.0,
-                )
-            )
-            double_extra += planned - base
-            reason = f"{reason}；加倍部分从短债底仓调拨"
-        elif action == "half":
-            if item["asset"] == "us":
-                frac = float(r.get("us_half_fraction", 0.5))
-            else:
-                frac = float(r.get("a_share_half_fraction", allocation_fraction("half", policy)))
+        elif action in ("triple", "double", "sesqui", "buy", "light", "half"):
+            frac = allocation_fraction(action, policy)
             planned = round(base * frac, 2)
-            held_back += max(base - planned, 0.0)
-            reason = f"{reason}；未用额度转入短债/备用金"
+            if planned > base:
+                double_extra += planned - base
+                reason = f"{reason}；超额部分从短债底仓调拨"
+            elif planned < base:
+                held_back += base - planned
+                reason = f"{reason}；未用额度转入短债/备用金"
         elif action == "bootstrap":
             remaining = bootstrap_remaining(held, target_amount, policy)
             planned = bootstrap_planned_amount(
@@ -374,9 +362,6 @@ def build_plan(
                 elif planned > base:
                     double_extra += planned - base
                     reason = f"{reason}；超出首月份额部分从短债调拨"
-        elif action == "buy":
-            planned = base
-            reason = f"{reason}"
         allocations.append(
             {
                 "fund_code": item["fund_code"],

@@ -115,9 +115,9 @@ def summarize_equity(indexes: dict, holdings_cost: dict[str, float], principal: 
         notes.append(f"{name}：{label}{suffix}")
         if action == "bootstrap":
             bootstrap.append(name)
-        elif action in ("buy", "double", "triple"):
+        elif action in ("buy", "double", "triple", "sesqui"):
             buyable.append(name)
-        elif action == "half":
+        elif action in ("half", "light"):
             half.append(name)
         elif action == "take_profit":
             take_profit.append(name)
@@ -225,6 +225,8 @@ def build_status() -> dict:
             "buy",
             "double",
             "triple",
+            "sesqui",
+            "light",
             "half",
             "bootstrap",
             "take_profit",
@@ -233,6 +235,8 @@ def build_status() -> dict:
                 "buy": "可研究满额定投",
                 "triple": "可研究3倍定投",
                 "double": "可研究2倍定投",
+                "sesqui": "可研究1.5倍定投",
+                "light": "可研究70%定投",
                 "half": "半额维持定投",
                 "bootstrap": "1年档25%建仓",
                 "take_profit": "建议分批止盈",
@@ -449,15 +453,13 @@ def render(status: dict) -> str:
     lines.extend(
         [
             "",
-            "> A股近10年定投（放宽）：＜30%→300% / 30%~40%→200% / 40%~60%→100% / 60%~90%→50% / ≥90%停买；"
-            "美股：＜40%→300% / 40%~50%→200% / 50%~70%→100% / 70%~90%→50% / ≥90%停买。"
+            "> A股/美股近10年定投：＜40%→300% / 40%~50%→200% / 50%~60%→150% / 60%~70%→100% / "
+            "70%~80%→70% / 80%~90%→50% / ≥90%停买。"
             f"{bootstrap_summary_line(load_policy())}。"
-            "回撤很深且十年已在停买区则只观察、不因跌幅抄底；**指数绝对点位不单独触发买入**。"
-            "标普用 Multpl 指数PE，四层校验通过才可交易判断。"
-            "纳指 PE 来自 QQQ（stockanalysis/yfinance）**仅供参考**；样本不足时分位显示「无统计分位」。"
-            "爬虫失败严禁用过期缓存做买卖。QDII溢价＞2%暂缓买入。"
-            "短债012773不看PE/回撤，按建仓计划与申购状态。"
-            "每月按交易日定时判断一次（非每日频繁切换）。",
+            "定投提醒默认每月最多1封（`alerts.max_emails_per_month`，止盈可突破）。"
+            "回撤很深且十年已在停买区则只观察；**指数绝对点位不单独触发买入**。"
+            "标普须 Multpl 核验；纳指仅参考；QDII溢价＞2%暂缓。"
+            "短债012773不看PE/回撤。每月按交易日定时判断，邮件不等于每天都要下单。",
         ]
     )
     lines.extend(

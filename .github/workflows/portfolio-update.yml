@@ -158,6 +158,17 @@ jobs:
           esac
           python scripts/send_trade_alert_email.py --monthly "${BUDGET}" --slot "${SLOT}" ${EXTRA}
 
+      - name: Commit trade-alert log
+        if: steps.gate.outputs.run == 'yes' && steps.mode.outputs.value != 'skip'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -f data/trade_alert_log.json ]; then
+            git add -f data/trade_alert_log.json
+            git diff --cached --quiet || git commit -m "记录本月定投提醒发送次数"
+            git push || true
+          fi
+
       - name: Skip notice
         if: steps.gate.outputs.run != 'yes' && steps.gate.outputs.run_us != 'yes'
         run: echo "已跳过刷新。"

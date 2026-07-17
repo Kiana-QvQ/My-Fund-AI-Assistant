@@ -28,14 +28,12 @@ class DcaAndBuildTierTests(unittest.TestCase):
 
     def test_scheme_c_10y_tiers(self) -> None:
         cases = [
-            (25.0, "triple"),
-            (30.0, "double"),
-            (39.9, "double"),
-            (40.0, "buy"),
-            (59.9, "buy"),
-            (60.0, "half"),
-            (80.0, "half"),
-            (89.9, "half"),
+            (39.0, "triple"),
+            (45.0, "double"),
+            (55.0, "sesqui"),
+            (65.0, "buy"),
+            (75.0, "light"),
+            (85.0, "half"),
             (90.0, "overvalued_watch"),
         ]
         for pct, expected in cases:
@@ -104,13 +102,13 @@ class DcaAndBuildTierTests(unittest.TestCase):
             held_cost=0.0,
             target_amount=2700.0,
         )
-        self.assertEqual(action, "half")
-        self.assertIn("维持定投", reason)
+        self.assertEqual(action, "light")
+        self.assertIn("70%", reason)
 
     def test_main_10y_buy_unchanged_band(self) -> None:
         action, _ = resolve_action(
             "沪深300",
-            50.0,
+            65.0,
             percentile_1y=90.0,
             drawdown_from_52w_high=0.0,
             policy=self.policy,
@@ -122,7 +120,7 @@ class DcaAndBuildTierTests(unittest.TestCase):
     def test_us_half_extends_to_90(self) -> None:
         action, reason = resolve_action(
             "标普500",
-            75.0,
+            85.0,
             percentile_1y=90.0,
             drawdown_from_52w_high=0.0,
             policy=self.policy,
@@ -133,6 +131,21 @@ class DcaAndBuildTierTests(unittest.TestCase):
         )
         self.assertEqual(action, "half")
         self.assertIn("50%", reason)
+
+    def test_us_light_tier(self) -> None:
+        action, reason = resolve_action(
+            "标普500",
+            75.0,
+            percentile_1y=90.0,
+            drawdown_from_52w_high=0.0,
+            policy=self.policy,
+            verified=True,
+            tradeable=True,
+            held_cost=0.0,
+            target_amount=800.0,
+        )
+        self.assertEqual(action, "light")
+        self.assertIn("70%", reason)
 
     def test_missing_drawdown_fail_closed_on_build(self) -> None:
         result = try_bootstrap_action(

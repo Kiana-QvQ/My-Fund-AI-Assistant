@@ -26,6 +26,7 @@ if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 from policy_rules import (  # noqa: E402
+    allocation_fraction,
     bootstrap_planned_amount,
     bootstrap_summary_line,
     decision_label,
@@ -37,6 +38,7 @@ from trading_calendar import resolve_order_window, today_cst  # noqa: E402
 
 SNAPSHOT_PATH = ROOT / "data" / "market_snapshot.json"
 HOLDINGS_PATH = ROOT / "config" / "portfolio_holdings.json"
+ALERT_LOG_PATH = ROOT / "data" / "trade_alert_log.json"
 CST = timezone(timedelta(hours=8))
 
 A_SHARE = ("沪深300", "中证500")
@@ -142,16 +144,8 @@ def collect_signals(snapshot: dict, monthly: float, policy: dict) -> dict:
                 fraction=0.25,
             )
             has_bootstrap = True
-        elif action == "triple":
-            amount = round(month_slice * 3, 2)
-        elif action == "double":
-            amount = round(month_slice * 2, 2)
-        elif action == "half":
-            frac_key = (
-                "a_share_half_fraction" if name in A_SHARE else "us_half_fraction"
-            )
-            frac = float(r.get(frac_key, 0.5))
-            amount = round(month_slice * frac, 2)
+        elif action in ("triple", "double", "sesqui", "buy", "light", "half"):
+            amount = round(month_slice * allocation_fraction(action, policy), 2)
         else:
             amount = month_slice
         pe_text = f"{pe:.2f}" if isinstance(pe, (int, float)) else "-"
@@ -188,18 +182,22 @@ def collect_signals(snapshot: dict, monthly: float, policy: dict) -> dict:
                 if err not in alert_lines:
                     alert_lines.append(str(err))
 
-        if action in ("buy", "double", "triple", "half", "bootstrap"):
+        if action in (
+            "buy",
+            "double",
+            "triple",
+            "sesqui",
+            "light",
+            "half",
+            "bootstrap",
+        ):
             buy_lines.append(f"  · {fund_name}（{code}）约 {amount:.2f} 元（{label}）")
             if name in A_SHARE:
                 buy_a.append(name)
             else:
                 buy_us.append(name)
-            if action in ("bootstrap", "half"):
-                paused_amount += max(month_slice - amount, 0.0)
-            elif action in ("double", "triple"):
-                pass
-            else:
-                pass
+            if amount < month_slice:
+                paused_amount += month_slice - amount
         elif action == "take_profit" and held_cost > 0:
             take_profit_lines.append(
                 f"  · {fund_name}（{code}）建议赎回约 "
@@ -375,11 +373,11 @@ cutoff_time：{timing["cutoff_time"]}
 {focus_note}
 
 【策略时点】
-1）A股近10年定投：＜30%→300%；30%~40%→200%；40%~60%→100%；60%~90%→50%；≥90%停买/止盈
-2）标普500（Multpl核验通过后）：＜40%→300%；40%~50%→200%；50%~70%→100%；70%~90%→50%；≥90%停买
-3）1年建仓三档（与十年取高）：{data.get('boot_line', '')}
-4）纳斯达克100：估值未核验，永不自动买入
-5）QDII 场内溢价＞2% 暂缓买入
+1）A股/美股近10年定投：＜40%→300%；40%~50%→200%；50%~60%→150%；60%~70%→100%；70%~80%→70%；80%~90%→50%；≥90%停买/止盈
+2）1年建仓三档（与十年取高）：{data.get('boot_line', '')}
+3）纳斯达克100：估值未核验，永不自动买入
+4）QDII 场内溢价＞2% 暂缓买入
+5）定投提醒默认每月最多 1 封（见 portfolio_policy.alerts）
 
 【信号结论】
 A股可买/半额：{a_text}
@@ -432,6 +430,79 @@ def should_send_for_slot(data: dict, slot: str, *, force: bool) -> tuple[bool, s
         return False, "evening_no_a_share_action"
     # morning: A-share reminder and/or US/QDII action
     return True, "morning_action"
+
+
+def _alert_cfg(policy: dict) -> dict:
+    return policy.get("alerts") or {}
+
+
+def load_alert_log(path: Path | None = None) -> dict:
+    path = path or ALERT_LOG_PATH
+    if not path.is_file():
+        return {"month": "", "count": 0, "events": []}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"month": "", "count": 0, "events": []}
+
+
+def save_alert_log(doc: dict, path: Path | None = None) -> None:
+    path = path or ALERT_LOG_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+
+
+def month_key_cst(day=None) -> str:
+    d = day or today_cst()
+    return f"{d.year:04d}-{d.month:02d}"
+
+
+def check_monthly_email_cap(
+    data: dict,
+    policy: dict,
+    *,
+    force: bool = False,
+) -> tuple[bool, str]:
+    """Limit routine DCA emails per CST calendar month.
+
+    Take-profit with holdings can bypass when configured.
+    """
+    cfg = _alert_cfg(policy)
+    max_n = int(cfg.get("max_emails_per_month", 1))
+    if max_n <= 0:
+        return True, "monthly_cap_disabled"
+    bypass = bool(cfg.get("take_profit_bypasses_monthly_cap", True))
+    if bypass and data.get("has_take_profit"):
+        return True, "take_profit_bypass"
+    # force still respects monthly DCA cap (avoids spam during联调 of routine signals)
+    log = load_alert_log()
+    month = month_key_cst()
+    count = int(log.get("count") or 0) if log.get("month") == month else 0
+    if count >= max_n:
+        return False, f"monthly_cap_reached ({count}/{max_n} in {month})"
+    return True, f"monthly_cap_ok ({count}/{max_n} in {month})"
+
+
+def record_email_sent(slot: str, subject: str, *, dry_run: bool = False) -> None:
+    if dry_run:
+        return
+    month = month_key_cst()
+    log = load_alert_log()
+    if log.get("month") != month:
+        log = {"month": month, "count": 0, "events": []}
+    log["count"] = int(log.get("count") or 0) + 1
+    events = list(log.get("events") or [])
+    events.append(
+        {
+            "at": datetime.now(CST).isoformat(timespec="seconds"),
+            "slot": slot,
+            "subject": subject[:120],
+        }
+    )
+    log["events"] = events[-20:]
+    save_alert_log(log)
 
 
 def require_mail_config() -> dict[str, str]:
@@ -612,6 +683,21 @@ def main() -> None:
         )
         return
 
+    ok_cap, cap_reason = check_monthly_email_cap(
+        data, policy, force=args.force
+    )
+    if not ok_cap:
+        print(f"跳过发送：{cap_reason}（本月定投提醒已达上限，避免每天刷信）")
+        _write_github_summary(
+            "### 邮件跳过（月上限）\n\n"
+            f"- reason: `{cap_reason}`\n"
+            "- 可在 `config/portfolio_policy.json` → `alerts.max_emails_per_month` 调整"
+            "（默认 1；改为 2 可允许同月上午+晚间各一封）。\n"
+            "- 有持仓止盈默认可突破月上限。\n"
+        )
+        return
+    print(f"月发送配额：{cap_reason}")
+
     subject, body = build_body(
         snapshot,
         args.monthly,
@@ -621,6 +707,7 @@ def main() -> None:
         timing=timing,
     )
     send_email(subject, body, dry_run=args.dry_run)
+    record_email_sent(args.slot, subject, dry_run=args.dry_run)
 
 
 if __name__ == "__main__":

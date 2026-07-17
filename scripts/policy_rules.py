@@ -1,8 +1,8 @@
 """Shared valuation / action rules loaded from portfolio_policy.json.
 
-10y DCA (Scheme C, relaxed for continuous investing):
-  A-share: <30%→300%, 30%~40%→200%, 40%~60%→100%, 60%~90%→50%, ≥90% stop
-  US:      <40%→300%, 40%~50%→200%, 50%~70%→100%, 70%~90%→50%, ≥90% stop
+10y DCA (shared A/US ladder):
+  <40%→300%, 40%~50%→200%, 50%~60%→150%, 60%~70%→100%,
+  70%~80%→70%, 80%~90%→50%, ≥90% stop/take-profit
 1y build tiers (per index): 100% / 50% / 25% of monthly sleeve when
   1y PE + drawdown gates pass; final intensity = max(10y, 1y).
 Index absolute price/level never triggers buys alone.
@@ -51,13 +51,46 @@ def index_bootstrap_rules(name: str, policy: dict | None = None) -> dict:
     return specific
 
 
+def dca_tiers(policy: dict | None = None) -> list[dict]:
+    """Shared A-share / US near-10y DCA ladder (fraction of monthly sleeve)."""
+    r = rules(policy)
+    tiers = r.get("dca_tiers")
+    if tiers:
+        return list(tiers)
+    return [
+        {"below": 40, "fraction": 3.0, "action": "triple"},
+        {"below": 50, "fraction": 2.0, "action": "double"},
+        {"below": 60, "fraction": 1.5, "action": "sesqui"},
+        {"below": 70, "fraction": 1.0, "action": "buy"},
+        {"below": 80, "fraction": 0.7, "action": "light"},
+        {"below": 90, "fraction": 0.5, "action": "half"},
+    ]
+
+
+def take_profit_threshold(policy: dict | None = None) -> float:
+    r = rules(policy)
+    return float(
+        r.get(
+            "take_profit_percentile_at_or_above",
+            r.get(
+                "a_share_take_profit_percentile_at_or_above",
+                r.get("us_take_profit_percentile_at_or_above", 90),
+            ),
+        )
+    )
+
+
 def action_from_fraction(frac: float) -> str:
     if frac >= 2.999:
         return "triple"
     if frac >= 1.999:
         return "double"
+    if frac >= 1.499:
+        return "sesqui"
     if frac >= 0.999:
         return "buy"
+    if frac >= 0.699:
+        return "light"
     if frac >= 0.499:
         return "half"
     if frac >= 0.249:
@@ -67,18 +100,77 @@ def action_from_fraction(frac: float) -> str:
 
 def allocation_fraction(action: str, policy: dict | None = None) -> float:
     """How much of the sleeve monthly budget to invest for this action."""
-    r = rules(policy)
-    if action == "triple":
-        return float(r.get("a_share_triple_fraction", 3.0))
-    if action == "double":
-        return float(r.get("a_share_double_fraction", 2.0))
-    if action == "buy":
-        return 1.0
-    if action == "half":
-        return float(r.get("a_share_half_fraction", 0.5))
+    for tier in dca_tiers(policy):
+        if tier.get("action") == action:
+            return float(tier["fraction"])
     if action == "bootstrap":
         return 0.25
     return 0.0
+
+
+def _classify_by_dca_tiers(
+    label: str,
+    percentile: float,
+    *,
+    premium: float | None,
+    policy: dict | None,
+) -> tuple[str, str]:
+    r = rules(policy)
+    take_profit_at = take_profit_threshold(policy)
+    premium_pause = float(r.get("qdii_premium_pause_above", 0.02))
+    premium_resume = float(r.get("qdii_premium_resume_below", 0.01))
+    tiers = dca_tiers(policy)
+
+    if percentile >= take_profit_at:
+        return (
+            "take_profit",
+            f"{label}近10年分位 {percentile:.2f}% ≥ {take_profit_at:.0f}%，"
+            f"暂停新增并可研究分批止盈1/3~1/2",
+        )
+
+    def _premium_gate(base_action: str, base_reason: str) -> tuple[str, str]:
+        if premium is not None and premium > premium_pause:
+            return (
+                "premium_block",
+                f"QDII溢价 {premium * 100:.2f}% > {premium_pause * 100:.0f}%，暂缓买入",
+            )
+        if premium is not None and premium > premium_resume:
+            return (
+                "wait",
+                f"{base_reason}，但溢价 {premium * 100:.2f}% 仍高于 "
+                f"{premium_resume * 100:.0f}%，等待回落",
+            )
+        return base_action, base_reason
+
+    prev = 0.0
+    for tier in tiers:
+        below = float(tier["below"])
+        frac = float(tier["fraction"])
+        action = str(tier["action"])
+        if percentile < below:
+            reason = (
+                f"{label}近10年分位 {percentile:.2f}% 处于 "
+                f"{prev:.0f}%~{below:.0f}%，可研究 {frac * 100:.0f}% 定投"
+                if prev > 0
+                else (
+                    f"{label}近10年分位 {percentile:.2f}% < {below:.0f}%，"
+                    f"可研究 {frac * 100:.0f}% 定投"
+                )
+            )
+            if label.startswith("美股"):
+                return _premium_gate(action, reason)
+            return action, reason
+        prev = below
+
+    if premium is not None and premium > premium_pause:
+        return (
+            "premium_block",
+            f"QDII溢价 {premium * 100:.2f}% > {premium_pause * 100:.0f}%，暂缓买入",
+        )
+    return (
+        "wait",
+        f"{label}近10年分位 {percentile:.2f}% ≥ {prev:.0f}%，暂停新增",
+    )
 
 
 def classify_index(
@@ -91,8 +183,6 @@ def classify_index(
     tradeable: bool | None = None,
 ) -> tuple[str, str]:
     """Return (action, reason) for an index sleeve using the main 10y DCA rules."""
-    r = rules(policy)
-
     if name in US:
         if name == "纳斯达克100":
             return (
@@ -106,126 +196,13 @@ def classify_index(
             )
         if percentile is None:
             return "unknown", "缺少 PE 分位"
-
-        triple_below = float(r.get("us_triple_percentile_below", 40))
-        double_below = float(r.get("us_double_percentile_below", 50))
-        buy_below = float(r.get("us_normal_percentile_below", 70))
-        half_below = float(r.get("us_half_percentile_below", 90))
-        half_frac = float(r.get("us_half_fraction", 0.5))
-        triple_frac = float(r.get("us_triple_fraction", 3.0))
-        double_frac = float(r.get("us_double_fraction", 2.0))
-        take_profit_at = float(r.get("us_take_profit_percentile_at_or_above", 90))
-        premium_pause = float(r.get("qdii_premium_pause_above", 0.02))
-        premium_resume = float(r.get("qdii_premium_resume_below", 0.01))
-
-        if percentile >= take_profit_at:
-            return (
-                "take_profit",
-                f"美股近10年分位 {percentile:.2f}% ≥ {take_profit_at:.0f}%，"
-                f"暂停新增并可研究分批止盈1/3~1/2",
-            )
-
-        def _premium_gate(base_action: str, base_reason: str) -> tuple[str, str]:
-            if premium is not None and premium > premium_pause:
-                return (
-                    "premium_block",
-                    f"QDII溢价 {premium * 100:.2f}% > {premium_pause * 100:.0f}%，暂缓买入",
-                )
-            if premium is not None and premium > premium_resume:
-                return (
-                    "wait",
-                    f"{base_reason}，但溢价 {premium * 100:.2f}% 仍高于 "
-                    f"{premium_resume * 100:.0f}%，等待回落",
-                )
-            return base_action, base_reason
-
-        if percentile < triple_below:
-            return _premium_gate(
-                "triple",
-                f"美股近10年分位 {percentile:.2f}% < {triple_below:.0f}%，"
-                f"可研究 {triple_frac * 100:.0f}% 定投",
-            )
-        if percentile < double_below:
-            return _premium_gate(
-                "double",
-                f"美股近10年分位 {percentile:.2f}% 处于 "
-                f"{triple_below:.0f}%~{double_below:.0f}%，"
-                f"可研究 {double_frac * 100:.0f}% 定投",
-            )
-        if percentile < buy_below:
-            return _premium_gate(
-                "buy",
-                f"美股近10年分位 {percentile:.2f}% 处于 "
-                f"{double_below:.0f}%~{buy_below:.0f}%，可研究满额定投",
-            )
-        if percentile < half_below:
-            return _premium_gate(
-                "half",
-                f"美股近10年分位 {percentile:.2f}% 处于 "
-                f"{buy_below:.0f}%~{half_below:.0f}%，按 {half_frac * 100:.0f}% 维持定投",
-            )
-        if premium is not None and premium > premium_pause:
-            return (
-                "premium_block",
-                f"QDII溢价 {premium * 100:.2f}% > {premium_pause * 100:.0f}%，暂缓买入",
-            )
-        return (
-            "wait",
-            f"美股近10年分位 {percentile:.2f}% ≥ {half_below:.0f}%，暂停新增",
+        return _classify_by_dca_tiers(
+            "美股", percentile, premium=premium, policy=policy
         )
 
     if percentile is None:
         return "unknown", "缺少 PE 分位"
-
-    triple_below = float(r.get("a_share_triple_percentile_below", 30))
-    double_below = float(
-        r.get(
-            "a_share_double_invest_percentile_below",
-            r.get("a_share_double_invest_percentile_at_or_below", 40),
-        )
-    )
-    buy_below = float(r.get("a_share_normal_percentile_below", 60))
-    half_below = float(r.get("a_share_half_percentile_below", 90))
-    half_frac = float(r.get("a_share_half_fraction", 0.5))
-    triple_frac = float(r.get("a_share_triple_fraction", 3.0))
-    double_frac = float(r.get("a_share_double_fraction", 2.0))
-    take_profit_at = float(r.get("a_share_take_profit_percentile_at_or_above", 90))
-
-    if percentile < triple_below:
-        return (
-            "triple",
-            f"A股近10年分位 {percentile:.2f}% < {triple_below:.0f}%，"
-            f"可研究 {triple_frac * 100:.0f}% 定投",
-        )
-    if percentile < double_below:
-        return (
-            "double",
-            f"A股近10年分位 {percentile:.2f}% 处于 "
-            f"{triple_below:.0f}%~{double_below:.0f}%，"
-            f"可研究 {double_frac * 100:.0f}% 定投",
-        )
-    if percentile < buy_below:
-        return (
-            "buy",
-            f"A股近10年分位 {percentile:.2f}% 处于 "
-            f"{double_below:.0f}%~{buy_below:.0f}%，可研究满额定投",
-        )
-    if percentile < half_below:
-        return (
-            "half",
-            f"A股近10年分位 {percentile:.2f}% 处于 "
-            f"{buy_below:.0f}%~{half_below:.0f}%，按 {half_frac * 100:.0f}% 维持定投",
-        )
-    if percentile >= take_profit_at:
-        return (
-            "take_profit",
-            f"A股近10年分位 {percentile:.2f}% ≥ {take_profit_at:.0f}%，"
-            f"暂停新增并可研究分批止盈1/3~1/2",
-        )
-    return (
-        "wait",
-        f"A股近10年分位 {percentile:.2f}% ≥ {half_below:.0f}%，暂停新增",
-    )
+    return _classify_by_dca_tiers("A股", percentile, premium=None, policy=policy)
 
 
 def bootstrap_cap(target_amount: float, policy: dict | None = None) -> float:
@@ -449,9 +426,7 @@ def deep_drawdown_observe_reason(
     if drawdown_from_52w_high < deep:
         return None
     r = rules(policy)
-    a_stop = float(r.get("a_share_take_profit_percentile_at_or_above", 90))
-    us_stop = float(r.get("us_take_profit_percentile_at_or_above", 90))
-    high_bar = min(a_stop, us_stop)
+    high_bar = take_profit_threshold(policy)
     if percentile < high_bar:
         return None
     return (
@@ -544,15 +519,13 @@ def resolve_action(
             reason_out = f"{reason_out}；{observe}"
         return "overvalued_watch", reason_out
 
-    if primary == "half":
-        observe = deep_drawdown_observe_reason(
-            percentile, drawdown_from_52w_high, policy
-        )
-        if observe:
-            return "half", f"{reason}；{observe}"
-        return primary, reason
-
-    if primary in ("triple", "double", "buy"):
+    if primary in ("triple", "double", "sesqui", "buy", "light", "half"):
+        if primary in ("half", "light"):
+            observe = deep_drawdown_observe_reason(
+                percentile, drawdown_from_52w_high, policy
+            )
+            if observe:
+                return primary, f"{reason}；{observe}"
         return primary, reason
 
     if primary == "wait":
@@ -571,8 +544,10 @@ def resolve_action(
 def decision_label(action: str) -> str:
     return {
         "triple": "可研究3倍定投",
-        "buy": "可研究满额定投",
         "double": "可研究2倍定投",
+        "sesqui": "可研究1.5倍定投",
+        "buy": "可研究满额定投",
+        "light": "可研究70%定投",
         "half": "半额维持定投",
         "bootstrap": "1年档25%建仓",
         "wait": "暂停新增",

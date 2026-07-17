@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -80,7 +82,30 @@ class EmailSlotGateTests(unittest.TestCase):
             self.assertFalse(ok_force)
             self.assertEqual(reason_force, "no_trade_action")
 
-    def test_evening_requires_a_share_action(self) -> None:
+    def test_monthly_cap_blocks_second_dca_email(self) -> None:
+        policy = load_policy()
+        data = {
+            "has_a_action": True,
+            "has_us_action": False,
+            "has_buy": True,
+            "has_take_profit": False,
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "trade_alert_log.json"
+            log_path.write_text(
+                json.dumps({"month": email_mod.month_key_cst(), "count": 1, "events": []}),
+                encoding="utf-8",
+            )
+            with patch.object(email_mod, "ALERT_LOG_PATH", log_path):
+                ok, reason = email_mod.check_monthly_email_cap(data, policy)
+                self.assertFalse(ok)
+                self.assertIn("monthly_cap_reached", reason)
+                data2 = dict(data)
+                data2["has_take_profit"] = True
+                ok2, reason2 = email_mod.check_monthly_email_cap(data2, policy)
+                self.assertTrue(ok2)
+                self.assertIn("bypass", reason2)
+
         data = {
             "has_a_action": False,
             "has_us_action": True,

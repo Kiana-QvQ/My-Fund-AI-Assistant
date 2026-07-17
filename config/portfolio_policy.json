@@ -12,25 +12,23 @@
   "rules": {
     "rebalance_period": "annual",
     "rebalance_deviation": 0.05,
-    "a_share_triple_percentile_below": 30,
-    "a_share_triple_fraction": 3.0,
-    "a_share_double_invest_percentile_below": 40,
-    "a_share_double_fraction": 2.0,
-    "a_share_normal_percentile_below": 60,
-    "a_share_half_percentile_below": 90,
-    "a_share_half_fraction": 0.5,
-    "a_share_take_profit_percentile_at_or_above": 90,
-    "us_triple_percentile_below": 40,
-    "us_triple_fraction": 3.0,
-    "us_double_percentile_below": 50,
-    "us_double_fraction": 2.0,
-    "us_normal_percentile_below": 70,
-    "us_half_percentile_below": 90,
-    "us_half_fraction": 0.5,
-    "us_take_profit_percentile_at_or_above": 90,
+    "dca_tiers": [
+      {"below": 40, "fraction": 3.0, "action": "triple"},
+      {"below": 50, "fraction": 2.0, "action": "double"},
+      {"below": 60, "fraction": 1.5, "action": "sesqui"},
+      {"below": 70, "fraction": 1.0, "action": "buy"},
+      {"below": 80, "fraction": 0.7, "action": "light"},
+      {"below": 90, "fraction": 0.5, "action": "half"}
+    ],
+    "take_profit_percentile_at_or_above": 90,
     "qdii_premium_pause_above": 0.02,
     "qdii_premium_resume_below": 0.01,
-    "note": "十年定投四档：A股 ＜30%→300%、30%~40%→200%、40%~60%→100%、60%~90%→50%、≥90%停买；美股 ＜40%→300%、40%~50%→200%、50%~70%→100%、70%~90%→50%、≥90%停买。1年建仓三档见 bootstrap。"
+    "note": "A股/美股共用十年定投：＜40%→300%、40%~50%→200%、50%~60%→150%、60%~70%→100%、70%~80%→70%、80%~90%→50%、≥90%停买。1年建仓见 bootstrap；邮件频率见 alerts。"
+  },
+  "alerts": {
+    "max_emails_per_month": 1,
+    "take_profit_bypasses_monthly_cap": true,
+    "note": "定投提醒默认每月最多1封（CST自然月）。止盈（有持仓）可突破月上限。改为2可允许同月上午+晚间各一封。--force 仍受月上限约束除非同时为止盈突破。"
   },
   "bootstrap": {
     "enabled": true,
@@ -102,7 +100,7 @@
         ]
       }
     },
-    "note": "1年建仓三档（按月度份额比例，可与十年定投取较高者）：100%/50%/25%。沪深：1年≤50/70/90 + 回撤≥5/4/3%；中证阈值略宽；标普须核验且溢价≤2%。累计微仓上限约目标仓30%。纳指不自动。点位不单独触发。"
+    "note": "1年建仓三档（与十年定投取较高者）：100%/50%/25%。建仓规则未改。"
   },
   "guardrails": {
     "paper_or_advice_only": true,
