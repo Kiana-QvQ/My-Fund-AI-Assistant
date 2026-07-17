@@ -1,7 +1,7 @@
 {
   "as_of": "2026-07-17",
-  "generated_at": "2026-07-17T11:48:30+08:00",
-  "updated_at_display": "2026-07-17 11:48:30 CST",
+  "generated_at": "2026-07-17T11:58:07+08:00",
+  "updated_at_display": "2026-07-17 11:58:07 CST",
   "total_cost_basis": 2000.0,
   "building_principal": 10000.0,
   "initial_build_percent": 20.0,
@@ -11,7 +11,7 @@
   "equity_notes": [
     "沪深300：建议分批止盈，1年分位72.4%",
     "中证500：建议分批止盈，1年分位85.6%",
-    "标普500：建议分批止盈，溢价4.82%，1年分位100.0%",
+    "标普500：建议分批止盈，溢价4.86%，1年分位100.0%",
     "纳斯达克100：仅参考·不自动买，溢价6.71%，1年分位100.0%"
   ],
   "rows": [
@@ -37,6 +37,8 @@
       "pe_ttm": 13.56,
       "pe_percentile": 80.06,
       "pe_percentile_1y": 72.43,
+      "verified": true,
+      "tradeable": true,
       "window": "近10年滚动PE分位",
       "window_1y": "近1年滚动PE分位（启动仓）",
       "window_start": "2016-07-18",
@@ -46,9 +48,7 @@
       "history_start": "2005-04-08",
       "history_count": 2427,
       "history_count_1y": 243,
-      "source": "AKShare CSIndex + Legu（近10年滚动市盈率分位）",
-      "verified": true,
-      "tradeable": true
+      "source": "AKShare CSIndex + Legu（近10年滚动市盈率分位）"
     },
     "中证500": {
       "index_code": "000905",
@@ -56,6 +56,8 @@
       "pe_ttm": 30.18,
       "pe_percentile": 85.78,
       "pe_percentile_1y": 85.6,
+      "verified": true,
+      "tradeable": true,
       "window": "近10年滚动PE分位",
       "window_1y": "近1年滚动PE分位（启动仓）",
       "window_start": "2016-07-18",
@@ -65,9 +67,7 @@
       "history_start": "2007-01-15",
       "history_count": 2427,
       "history_count_1y": 243,
-      "source": "AKShare CSIndex + Legu（近10年滚动市盈率分位）",
-      "verified": true,
-      "tradeable": true
+      "source": "AKShare CSIndex + Legu（近10年滚动市盈率分位）"
     },
     "标普500": {
       "pe_ttm": 32.41,
@@ -85,14 +85,14 @@
       "history_points_1y": 12,
       "history_from_cache": true,
       "current_timestamp": "4:00 PM EDT, Thu Jul 16",
-      "fetched_at": "2026-07-17T11:19:21+08:00",
+      "fetched_at": "2026-07-17T11:57:05+08:00",
       "reason": "Multpl 指数PE=32.41，近10年分位 93.33% （样本 120），近1年分位 100.00%（月度序列来自缓存）",
       "validation_errors": [],
-      "qdii_premium": 0.0482,
-      "qdii_premium_pct": 4.82,
+      "qdii_premium": 0.0486,
+      "qdii_premium_pct": 4.86,
       "qdii_etf": "513500",
       "qdii_premium_status": "ok",
-      "qdii_premium_reason": "场内513500 溢价 4.82%"
+      "qdii_premium_reason": "场内513500 溢价 4.86%"
     },
     "纳斯达克100": {
       "pe_ttm": 32.54,
@@ -101,9 +101,13 @@
       "verified": false,
       "status": "reference_only",
       "tradeable": false,
+      "reference_only": true,
       "date": "2026-07-17",
       "window": "QQQ PE 本地累积分位（仅参考）",
+      "window_1y": "近1年 QQQ PE 参考分位",
       "source": "stockanalysis.com/etf/qqq PE Ratio",
+      "history_points": 1,
+      "history_points_1y": 1,
       "reason": "参考：QQQ PE=32.54，近10年参考分位 100.00%（样本 1），近1年参考分位 100.00%（样本 1）；ETF估值≠指数PE，未核验，禁止自动买入",
       "validation_errors": [
         "纳斯达克100仅展示参考估值，不参与自动买卖"
@@ -112,11 +116,7 @@
       "qdii_premium_pct": 6.71,
       "qdii_etf": "159941",
       "qdii_premium_status": "ok",
-      "qdii_premium_reason": "场内159941 溢价 6.71%",
-      "reference_only": true,
-      "window_1y": "近1年 QQQ PE 参考分位",
-      "history_points": 1,
-      "history_points_1y": 1
+      "qdii_premium_reason": "场内159941 溢价 6.71%"
     }
   },
   "holdings_cost": {
