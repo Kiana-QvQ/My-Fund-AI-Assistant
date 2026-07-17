@@ -1,11 +1,9 @@
 """Send at most one daily action email for buy / take-profit signals.
 
-Rules:
-- A-share: buy if PE percentile < 40%; double if <= 30%; take-profit if >= 60%.
-- US QDII: buy if PE percentile < 50%; take-profit if >= 70%;
-  block buy when onshore ETF premium > 2%.
-- No email when there is neither buy nor take-profit-with-holding signal,
-  unless --force.
+US rules (fail-closed):
+- S&P 500: only when Multpl index PE is verified; else alert, never buy.
+- Nasdaq 100: always unverified → never buy.
+- Never use yfinance ETF PE for decisions.
 """
 
 from __future__ import annotations
@@ -78,6 +76,7 @@ def holdings_cost() -> dict[str, float]:
 
 def collect_signals(snapshot: dict, monthly: float, policy: dict) -> dict:
     indexes = snapshot.get("indexes", {})
+    us_meta = snapshot.get("us_meta", {})
     held = holdings_cost()
     r = rules(policy)
     a_buy = float(r.get("a_share_normal_percentile_below", 40))
@@ -88,7 +87,9 @@ def collect_signals(snapshot: dict, monthly: float, policy: dict) -> dict:
     buy_us: list[str] = []
     buy_lines: list[str] = []
     take_profit_lines: list[str] = []
+    alert_lines: list[str] = list(us_meta.get("alerts") or [])
     paused_amount = 0.0
+    spx_failed = False
 
     for name in (*A_SHARE, *US):
         item = indexes.get(name, {})
@@ -96,7 +97,12 @@ def collect_signals(snapshot: dict, monthly: float, policy: dict) -> dict:
         pct = item.get("pe_percentile")
         premium = item.get("qdii_premium")
         action, reason = classify_index(
-            name, pct, premium=premium, policy=policy
+            name,
+            pct,
+            premium=premium,
+            policy=policy,
+            verified=item.get("verified"),
+            tradeable=item.get("tradeable"),
         )
         code, fund_name, weight = FUND_BY_INDEX[name]
         amount = round(monthly * weight, 2)
@@ -108,11 +114,19 @@ def collect_signals(snapshot: dict, monthly: float, policy: dict) -> dict:
             else "-"
         )
         label = decision_label(action)
+        verified_flag = item.get("verified")
         rows.append(
             f"- {name}｜PE {pe_text}｜分位 {pct_text}｜溢价 {premium_text}｜"
-            f"{label}｜{reason}"
+            f"核验={'是' if verified_flag is True else '否'}｜{label}｜{reason}"
         )
+        if name == "标普500" and verified_flag is not True:
+            spx_failed = True
+            for err in item.get("validation_errors") or [reason]:
+                if err not in alert_lines:
+                    alert_lines.append(str(err))
+
         if action in ("buy", "double"):
+            # US buy only possible when classify_index already verified.
             buy_lines.append(f"  · {fund_name}（{code}）约 {amount:.2f} 元（{label}）")
             if name in A_SHARE:
                 buy_a.append(name)
@@ -136,6 +150,8 @@ def collect_signals(snapshot: dict, monthly: float, policy: dict) -> dict:
         "buy_us": buy_us,
         "buy_lines": buy_lines,
         "take_profit_lines": take_profit_lines,
+        "alert_lines": alert_lines,
+        "spx_failed": spx_failed,
         "paused_amount": paused_amount,
         "short_code": short_code,
         "short_name": short_name,
@@ -143,9 +159,39 @@ def collect_signals(snapshot: dict, monthly: float, policy: dict) -> dict:
         "short_total": round(short_base + paused_amount, 2),
         "has_buy": bool(buy_a or buy_us),
         "has_take_profit": bool(take_profit_lines),
+        "has_us_alert": spx_failed or bool(alert_lines),
         "a_buy": a_buy,
         "us_buy": us_buy,
     }
+
+
+def build_alert_body(snapshot: dict, data: dict) -> tuple[str, str]:
+    as_of = snapshot.get("as_of", date.today().isoformat())
+    now = datetime.now(CST).strftime("%Y-%m-%d %H:%M CST")
+    alerts = "\n".join(f"- {line}" for line in data["alert_lines"]) or "- （无明细）"
+    subject = f"【估值告警】{as_of} 美股估值未核验，请勿按邮件操作买入"
+    body = f"""【估值获取失败 / 未核验】
+
+生成时间：{now}
+数据日期：{as_of}
+
+系统未能完成美股指数估值核验（或纳指仍为未核验状态）。
+按策略硬规则：禁止输出买入提醒，请勿依据本邮件下单。
+
+【告警明细】
+{alerts}
+
+【四指数快照】
+{chr(10).join(data["rows"])}
+
+【执行提醒】
+1. 标普500 需 Multpl 指数 PE + 近10年分位校验通过后才可自动判断。
+2. 纳斯达克100 现阶段永久未核验，永不自动生成买入信号。
+3. 严禁使用过期缓存估值继续买卖判断。
+
+— My Fund AI Assistant
+"""
+    return subject, body
 
 
 def build_body(
@@ -165,6 +211,8 @@ def build_body(
         if data["has_take_profit"]:
             parts.append("止盈")
         why = "今日存在需要人工确认的行动：" + "、".join(parts) + "。"
+        if data["spx_failed"]:
+            why += " 注意：标普估值校验失败，美股买入信号已禁止。"
         names = "、".join(data["buy_a"] + data["buy_us"])
         subject = (
             f"{title}｜可买：{names}" if names else f"{title}｜止盈观察"
@@ -186,6 +234,11 @@ def build_body(
         if data["take_profit_lines"]
         else "  · 无（账本无对应持仓时仅观察）"
     )
+    alert_block = (
+        "\n".join(f"- {line}" for line in data["alert_lines"])
+        if data["alert_lines"]
+        else "- 无"
+    )
 
     body = f"""{title}
 
@@ -195,21 +248,19 @@ def build_body(
 
 【为何发这封邮件】
 {why}
-无行动信号时日常定时任务不发邮件。
 
 【策略时点】
-1）A股（沪深300 / 中证500）
-   · 分位＜{a_buy:.0f}% → 可买；≤30% 加倍；≥60% 分批止盈
-   · 下一个交易日 09:00~14:55 招行 APP 下单（15点前按当日净值）
-
-2）美股 QDII（标普500 / 纳指100）
-   · 分位＜{us_buy:.0f}% → 可买；≥70% 分批止盈
-   · 场内 ETF 溢价＞2% 时暂缓买入；溢价回落至1%内再考虑
-   · 当天交易日 15 点前下单
+1）A股：分位＜{a_buy:.0f}% 可买；≤30% 加倍；≥60% 分批止盈
+2）标普500：仅 Multpl 指数PE核验通过后，分位＜{us_buy:.0f}% 可买；≥70% 止盈
+3）纳斯达克100：估值未核验，永不自动买入
+4）QDII 场内溢价＞2% 暂缓买入
 
 【今日结论】
 A股可买：{a_text}
 美股可买：{us_text}
+
+【美股核验告警】
+{alert_block}
 
 【四指数估值】
 {chr(10).join(data["rows"])}
@@ -220,13 +271,11 @@ A股可买：{a_text}
 分批止盈：
 {tp_block}
 短债底仓：{data["short_name"]}（{data["short_code"]}）约 {data["short_total"]:.2f} 元
-  （固定短债 {data["short_base"]:.2f} + 权益暂停转入 {data["paused_amount"]:.2f}）
 
 【执行提醒】
 1. 以招行 APP 实际申购/赎回状态为准。
-2. 买入后请运行：python scripts/record_holding.py buy --fund 代码 --amount 金额
-3. 止盈后请运行：python scripts/record_holding.py sell --fund 代码 --amount 金额
-4. 仅研究提醒，不构成投资建议，不会自动下单。
+2. 买入后：python scripts/record_holding.py buy --fund 代码 --amount 金额
+3. 仅研究提醒，不构成投资建议，不会自动下单。
 
 — My Fund AI Assistant
 """
@@ -301,7 +350,7 @@ def send_email(subject: str, body: str, dry_run: bool = False) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="发送定投行动提醒（买入/止盈）")
+    parser = argparse.ArgumentParser(description="发送定投行动提醒（买入/止盈/估值告警）")
     parser.add_argument("--snapshot", default=str(SNAPSHOT_PATH))
     parser.add_argument(
         "--monthly",
@@ -322,8 +371,15 @@ def main() -> None:
 
     data = collect_signals(snapshot, args.monthly, policy)
     actionable = data["has_buy"] or data["has_take_profit"]
+
+    # SPX validation failure → alert only (no US buy already enforced).
+    if data["spx_failed"] and not actionable and not args.force:
+        subject, body = build_alert_body(snapshot, data)
+        send_email(subject, body, dry_run=args.dry_run)
+        return
+
     if not actionable and not args.force:
-        print("跳过发送：无买入信号，也无持仓止盈信号。")
+        print("跳过发送：无买入/止盈信号，且标普估值校验通过（或仅有纳指未核验提示）。")
         for row in data["rows"]:
             print(row)
         return

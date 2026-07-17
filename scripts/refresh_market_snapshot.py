@@ -133,20 +133,60 @@ def fund_snapshot() -> dict[str, dict]:
     return result
 
 
-def index_snapshot() -> tuple[dict[str, dict], dict[str, dict]]:
+def index_snapshot() -> tuple[dict[str, dict], dict[str, dict], dict]:
     result = query_pe_snapshot()
+    # Fail-closed: never load stale us_pe_snapshot for trading after a refresh error.
     try:
         us_snapshot = refresh_us_pe()
     except Exception as exc:
-        us_snapshot = json.loads(US_PE_PATH.read_text(encoding="utf-8"))
-        us_snapshot["refresh_error"] = str(exc)
+        us_snapshot = {
+            "as_of": date.today().isoformat(),
+            "source": "refresh_failed",
+            "alerts": [f"美股估值刷新异常：{exc}"],
+            "us_decision_blocked": True,
+            "nasdaq_buy_blocked": True,
+            "indexes": {
+                "标普500": {
+                    "pe_ttm": None,
+                    "pe_percentile": None,
+                    "verified": False,
+                    "tradeable": False,
+                    "status": "fetch_failed",
+                    "date": None,
+                    "reason": f"美股估值刷新异常：{exc}；禁止使用过期缓存",
+                    "validation_errors": [str(exc)],
+                },
+                "纳斯达克100": {
+                    "pe_ttm": None,
+                    "pe_percentile": None,
+                    "verified": False,
+                    "tradeable": False,
+                    "status": "unverified",
+                    "date": None,
+                    "reason": "纳斯达克100估值未核验，禁止自动买入",
+                    "validation_errors": ["hardcoded_unverified"],
+                },
+            },
+        }
+        try:
+            US_PE_PATH.write_text(
+                json.dumps(us_snapshot, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
     for name, item in us_snapshot.get("indexes", {}).items():
         result[name] = {
             **item,
-            "date": us_snapshot.get("as_of"),
-            "window": us_snapshot.get("window"),
-            "source": us_snapshot.get("source"),
+            "date": item.get("date") or us_snapshot.get("as_of"),
+            "window": item.get("window") or us_snapshot.get("window"),
+            "source": item.get("source") or us_snapshot.get("source"),
         }
+    us_meta = {
+        "us_decision_blocked": us_snapshot.get("us_decision_blocked", True),
+        "nasdaq_buy_blocked": us_snapshot.get("nasdaq_buy_blocked", True),
+        "alerts": us_snapshot.get("alerts", []),
+    }
     try:
         premiums = fetch_qdii_premiums()
     except Exception as exc:
@@ -161,7 +201,7 @@ def index_snapshot() -> tuple[dict[str, dict], dict[str, dict]]:
             result[name]["qdii_etf"] = premium_item.get("etf_code")
             result[name]["qdii_premium_status"] = premium_item.get("status")
             result[name]["qdii_premium_reason"] = premium_item.get("reason")
-    return result, premiums
+    return result, premiums, us_meta
 
 
 def action_for(
@@ -177,19 +217,20 @@ def action_for(
             return "buy", "稳健底仓；当前申购状态允许小额建仓"
         return "wait", f"申购状态为 {status}"
 
+    if item["asset"] == "a_share":
+        index_name = item["index"]["symbol"]
+    else:
+        index_name = item["index"]["name"]
+    index = indexes.get(index_name, {})
+
     if fund["purchase_status"] == "暂停申购":
-        # Still surface take-profit / premium notes via index rules when useful.
-        index_name = (
-            item["index"]["symbol"]
-            if item["asset"] == "a_share"
-            else item["index"]["name"]
-        )
-        index = indexes.get(index_name, {})
         signal, reason = classify_index(
             index_name,
             index.get("pe_percentile"),
             premium=index.get("qdii_premium"),
             policy=policy,
+            verified=index.get("verified"),
+            tradeable=index.get("tradeable"),
         )
         if signal == "take_profit" and holdings_cost.get(item["fund_code"], 0) > 0:
             return "take_profit", f"{reason}；基金暂停申购不影响止盈观察"
@@ -198,16 +239,13 @@ def action_for(
     if fund["purchase_status"] not in ("开放申购", "限大额"):
         return "wait", f"申购状态为 {fund['purchase_status']}"
 
-    if item["asset"] == "a_share":
-        index_name = item["index"]["symbol"]
-    else:
-        index_name = item["index"]["name"]
-    index = indexes.get(index_name, {})
     signal, reason = classify_index(
         index_name,
         index.get("pe_percentile"),
         premium=index.get("qdii_premium"),
         policy=policy,
+        verified=index.get("verified"),
+        tradeable=index.get("tradeable"),
     )
     if signal == "take_profit":
         held = holdings_cost.get(item["fund_code"], 0.0)
@@ -241,10 +279,8 @@ def build_plan(
         action, reason = action_for(item, fund, indexes, holdings_cost, policy)
         planned = base
         if action in ("wait", "take_profit", "premium_block", "unknown"):
-            if action != "take_profit":
-                held_back += base
-            else:
-                held_back += base
+            held_back += base
+            if action == "take_profit":
                 take_profit_notes.append(reason)
             planned = 0.0
         elif action == "double":
@@ -297,7 +333,7 @@ def main() -> None:
 
     policy = load_policy()
     funds = fund_snapshot()
-    indexes, premiums = index_snapshot()
+    indexes, premiums, us_meta = index_snapshot()
     holdings_cost = load_holdings_cost()
     items = []
     for item in FUNDS:
@@ -310,6 +346,7 @@ def main() -> None:
         "funds": funds,
         "indexes": indexes,
         "qdii_premiums": premiums,
+        "us_meta": us_meta,
         "build_plan": build_plan(
             args.principal, items, indexes, holdings_cost, policy
         ),

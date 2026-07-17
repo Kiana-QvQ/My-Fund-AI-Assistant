@@ -1,28 +1,43 @@
 {
   "as_of": "2026-07-17",
-  "window": "近10年滚动PE分位（历史样本不足时沿用参考分位）",
-  "source": "yfinance trailingPE (SPY/QQQ) + local history",
-  "updated_at": "2026-07-17T10:09:48+08:00",
+  "updated_at": "2026-07-17T10:45:34+08:00",
+  "window": "标普：Multpl近10年；纳指：未核验",
+  "source": "multpl.com S&P 500 PE (current + monthly history) + local percentile; NDX hardcoded unverified",
   "indexes": {
     "标普500": {
-      "pe_ttm": 27.5,
-      "pe_percentile": 76.0,
-      "ticker": "SPY",
-      "status": "fallback_cached",
-      "percentile_source": "reference_fallback(n=1<60)",
-      "history_points": 1,
-      "reason": "SPY trailing PE=27.50；近10年分位来源 reference_fallback(n=1<60)",
-      "fetch_error": "Too Many Requests. Rate limited. Try after a while."
+      "pe_ttm": 32.41,
+      "pe_percentile": 93.33,
+      "verified": true,
+      "tradeable": true,
+      "status": "verified",
+      "date": "2026-07-16",
+      "window": "近10年 Multpl 月度PE分位",
+      "source": "https://www.multpl.com/s-p-500-pe-ratio",
+      "history_source": "https://www.multpl.com/s-p-500-pe-ratio/table/by-month",
+      "history_points": 120,
+      "history_from_cache": true,
+      "current_timestamp": "4:00 PM EDT, Thu Jul 16",
+      "fetched_at": "2026-07-17T10:45:34+08:00",
+      "reason": "Multpl 指数PE=32.41，近10年分位 93.33% （样本 120）（月度序列来自缓存）",
+      "validation_errors": []
     },
     "纳斯达克100": {
-      "pe_ttm": 33.6,
-      "pe_percentile": 72.0,
-      "ticker": "QQQ",
-      "status": "fallback_cached",
-      "percentile_source": "reference_fallback(n=1<60)",
-      "history_points": 1,
-      "reason": "QQQ trailing PE=33.60；近10年分位来源 reference_fallback(n=1<60)",
-      "fetch_error": "Too Many Requests. Rate limited. Try after a while."
+      "pe_ttm": null,
+      "pe_percentile": null,
+      "verified": false,
+      "status": "unverified",
+      "tradeable": false,
+      "date": null,
+      "window": "无稳定免费指数PE历史序列",
+      "source": "hardcoded_unverified",
+      "reason": "纳斯达克100暂无稳定可爬的指数PE历史序列，估值未核验，禁止自动买入",
+      "validation_errors": [
+        "纳斯达克100硬编码为未核验"
+      ]
     }
-  }
+  },
+  "alerts": [],
+  "us_decision_blocked": false,
+  "nasdaq_buy_blocked": true,
+  "has_us_alert": false
 }

@@ -14,7 +14,7 @@ reports/*
 !data/.gitkeep
 !data/market_snapshot.json
 !data/portfolio_status.json
-!data/us_pe_history.json
+!data/sp500_pe_multpl.json
 !logs/.gitkeep
 !reports/.gitkeep
 

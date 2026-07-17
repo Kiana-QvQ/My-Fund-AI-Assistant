@@ -87,63 +87,73 @@
       "source": "AKShare CSIndex + Legu（近10年滚动市盈率分位）"
     },
     "标普500": {
-      "pe_ttm": 27.5,
-      "pe_percentile": 76.0,
-      "ticker": "SPY",
-      "status": "fallback_cached",
-      "percentile_source": "reference_fallback(n=1<60)",
-      "history_points": 1,
-      "reason": "SPY trailing PE=27.50；近10年分位来源 reference_fallback(n=1<60)",
-      "fetch_error": "Too Many Requests. Rate limited. Try after a while.",
-      "date": "2026-07-17",
-      "window": "近10年滚动PE分位（历史样本不足时沿用参考分位）",
-      "source": "yfinance trailingPE (SPY/QQQ) + local history",
-      "qdii_premium": 0.0544,
-      "qdii_premium_pct": 5.44,
+      "pe_ttm": 32.41,
+      "pe_percentile": 93.33,
+      "verified": true,
+      "tradeable": true,
+      "status": "verified",
+      "date": "2026-07-16",
+      "window": "近10年 Multpl 月度PE分位",
+      "source": "https://www.multpl.com/s-p-500-pe-ratio",
+      "history_source": "https://www.multpl.com/s-p-500-pe-ratio/table/by-month",
+      "history_points": 120,
+      "history_from_cache": true,
+      "current_timestamp": "4:00 PM EDT, Thu Jul 16",
+      "fetched_at": "2026-07-17T10:45:34+08:00",
+      "reason": "Multpl 指数PE=32.41，近10年分位 93.33% （样本 120）（月度序列来自缓存）",
+      "validation_errors": [],
+      "qdii_premium": 0.049,
+      "qdii_premium_pct": 4.9,
       "qdii_etf": "513500",
       "qdii_premium_status": "ok",
-      "qdii_premium_reason": "场内513500 溢价 5.44%"
+      "qdii_premium_reason": "场内513500 溢价 4.90%"
     },
     "纳斯达克100": {
-      "pe_ttm": 33.6,
-      "pe_percentile": 72.0,
-      "ticker": "QQQ",
-      "status": "fallback_cached",
-      "percentile_source": "reference_fallback(n=1<60)",
-      "history_points": 1,
-      "reason": "QQQ trailing PE=33.60；近10年分位来源 reference_fallback(n=1<60)",
-      "fetch_error": "Too Many Requests. Rate limited. Try after a while.",
+      "pe_ttm": null,
+      "pe_percentile": null,
+      "verified": false,
+      "status": "unverified",
+      "tradeable": false,
       "date": "2026-07-17",
-      "window": "近10年滚动PE分位（历史样本不足时沿用参考分位）",
-      "source": "yfinance trailingPE (SPY/QQQ) + local history",
-      "qdii_premium": 0.0699,
-      "qdii_premium_pct": 6.99,
+      "window": "无稳定免费指数PE历史序列",
+      "source": "hardcoded_unverified",
+      "reason": "纳斯达克100暂无稳定可爬的指数PE历史序列，估值未核验，禁止自动买入",
+      "validation_errors": [
+        "纳斯达克100硬编码为未核验"
+      ],
+      "qdii_premium": 0.0651,
+      "qdii_premium_pct": 6.51,
       "qdii_etf": "159941",
       "qdii_premium_status": "ok",
-      "qdii_premium_reason": "场内159941 溢价 6.99%"
+      "qdii_premium_reason": "场内159941 溢价 6.51%"
     }
   },
   "qdii_premiums": {
     "标普500": {
       "etf_code": "513500",
-      "price": 2.552,
+      "price": 2.539,
       "iopv": 2.4203,
-      "premium": 0.0544,
-      "premium_pct": 5.44,
+      "premium": 0.049,
+      "premium_pct": 4.9,
       "status": "ok",
-      "as_of": "2026-07-17T10:10:09+08:00",
-      "reason": "场内513500 溢价 5.44%"
+      "as_of": "2026-07-17T10:45:53+08:00",
+      "reason": "场内513500 溢价 4.90%"
     },
     "纳斯达克100": {
       "etf_code": "159941",
-      "price": 1.576,
+      "price": 1.569,
       "iopv": 1.4731,
-      "premium": 0.0699,
-      "premium_pct": 6.99,
+      "premium": 0.0651,
+      "premium_pct": 6.51,
       "status": "ok",
-      "as_of": "2026-07-17T10:10:09+08:00",
-      "reason": "场内159941 溢价 6.99%"
+      "as_of": "2026-07-17T10:45:53+08:00",
+      "reason": "场内159941 溢价 6.51%"
     }
+  },
+  "us_meta": {
+    "us_decision_blocked": false,
+    "nasdaq_buy_blocked": true,
+    "alerts": []
   },
   "build_plan": {
     "principal": 10000.0,
@@ -180,7 +190,7 @@
         "target_percent": 8.0,
         "action": "wait",
         "planned_amount": 0.0,
-        "reason": "基金当前暂停申购；美股分位 76.00% ≥ 70%，建议分批止盈1/3~1/2"
+        "reason": "基金当前暂停申购；美股分位 93.33% ≥ 70%，建议分批止盈1/3~1/2"
       },
       {
         "fund_code": "016452",
@@ -188,7 +198,7 @@
         "target_percent": 3.0,
         "action": "wait",
         "planned_amount": 0.0,
-        "reason": "美股分位 72.00% ≥ 70%，建议分批止盈1/3~1/2；账本暂无该基金持仓，仅观察"
+        "reason": "纳斯达克100估值未核验，禁止自动买入"
       }
     ],
     "take_profit_notes": [],

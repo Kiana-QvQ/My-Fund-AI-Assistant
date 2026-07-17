@@ -69,6 +69,8 @@ def summarize_equity(indexes: dict) -> tuple[str, list[str]]:
             name,
             item.get("pe_percentile"),
             premium=item.get("qdii_premium"),
+            verified=item.get("verified"),
+            tradeable=item.get("tradeable"),
         )
         label = decision_label(action)
         premium_pct = item.get("qdii_premium_pct")
@@ -224,14 +226,17 @@ def build_status() -> dict:
         short_note = "短债按计划持有"
     overall = f"{equity_tone}；{short_note}"
 
-    us_as_of = None
-    for name in ("标普500", "纳斯达克100"):
-        us_as_of = indexes.get(name, {}).get("date") or us_as_of
+    spx = indexes.get("标普500", {})
+    ndx = indexes.get("纳斯达克100", {})
     data_status = (
         "market_snapshot.json 已加载" if snapshot else "尚未生成 market_snapshot.json"
     )
-    if us_as_of and us_as_of < as_of:
-        data_status += f"；美股PE手工快照日期 {us_as_of}，可能滞后"
+    if spx.get("verified") is True:
+        data_status += f"；标普PE已核验（Multpl，{spx.get('date', '-')}）"
+    elif spx:
+        data_status += "；标普PE未核验/校验失败（禁止自动买入）"
+    if ndx.get("verified") is not True:
+        data_status += "；纳指估值硬编码未核验"
 
     status = {
         "as_of": as_of,
@@ -322,6 +327,8 @@ def render(status: dict) -> str:
             name,
             percentile,
             premium=index.get("qdii_premium"),
+            verified=index.get("verified"),
+            tradeable=index.get("tradeable"),
         )
         pe_text = f"{pe:.2f}" if isinstance(pe, (int, float)) else "待核验"
         percentile_text = (
@@ -329,7 +336,12 @@ def render(status: dict) -> str:
         )
         decision = decision_label(action)
         if action == "unknown":
-            decision = "数据不足，暂停自动买入"
+            if name == "纳斯达克100":
+                decision = "未核验，禁止自动买入"
+            elif index.get("verified") is not True:
+                decision = "未核验/校验失败，禁止自动买入"
+            else:
+                decision = "数据不足，暂停自动买入"
         lines.append(
             f"| {name} | `{market_code}` | `{fund_code}` | {pe_text} | "
             f"{percentile_text} | {premium_text} | {data_date} | {decision} |"
@@ -337,8 +349,9 @@ def render(status: dict) -> str:
     lines.extend(
         [
             "",
-            "> A股分位为近10年滚动PE；美股PE由 `scripts/us_pe.py` 自动刷新（yfinance），"
-            "历史样本不足时分位仍用参考值。QDII溢价按场内ETF相对IOPV计算，＞2%暂缓买入。",
+            "> A股分位为近10年滚动PE；标普500 用 Multpl 指数PE（最新值+月度历史）本地算近10年分位，"
+            "四层校验通过才可交易判断；纳指硬编码未核验、永不自动买入。"
+            "爬虫失败严禁用过期缓存做买卖。QDII溢价按场内ETF相对IOPV计算，＞2%暂缓买入。",
         ]
     )
     lines.extend(

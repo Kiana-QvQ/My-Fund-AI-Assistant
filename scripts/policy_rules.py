@@ -28,65 +28,88 @@ def classify_index(
     *,
     premium: float | None = None,
     policy: dict | None = None,
+    verified: bool | None = None,
+    tradeable: bool | None = None,
 ) -> tuple[str, str]:
     """Return (action, reason) for an index sleeve.
 
     Actions: buy | double | wait | take_profit | premium_block | unknown
     """
     r = rules(policy)
-    if percentile is None:
-        return "unknown", "缺少 PE 分位"
 
-    if name in A_SHARE:
-        double_at = float(r.get("a_share_double_invest_percentile_at_or_below", 30))
-        buy_below = float(r.get("a_share_normal_percentile_below", 40))
-        take_profit_at = float(r.get("a_share_take_profit_percentile_at_or_above", 60))
-        if percentile <= double_at:
-            return "double", f"A股分位 {percentile:.2f}% ≤ {double_at:.0f}%，可研究加倍"
-        if percentile < buy_below:
-            return "buy", f"A股分位 {percentile:.2f}% < {buy_below:.0f}%，可研究定投"
+    # US sleeves require explicit verification before any buy / PE take-profit.
+    if name in US:
+        if name == "纳斯达克100":
+            return (
+                "unknown",
+                "纳斯达克100估值未核验，禁止自动买入",
+            )
+        # Must be explicitly True — missing field means unverified.
+        if verified is not True or tradeable is False:
+            return (
+                "unknown",
+                "标普500估值未核验或校验失败，禁止自动买入/止盈判断",
+            )
+        if percentile is None:
+            return "unknown", "缺少 PE 分位"
+
+        buy_below = float(r.get("us_normal_percentile_below", 50))
+        take_profit_at = float(r.get("us_take_profit_percentile_at_or_above", 70))
+        premium_pause = float(r.get("qdii_premium_pause_above", 0.02))
+        premium_resume = float(r.get("qdii_premium_resume_below", 0.01))
+
         if percentile >= take_profit_at:
             return (
                 "take_profit",
-                f"A股分位 {percentile:.2f}% ≥ {take_profit_at:.0f}%，建议分批止盈1/3~1/2",
+                f"美股分位 {percentile:.2f}% ≥ {take_profit_at:.0f}%，建议分批止盈1/3~1/2",
             )
-        return (
-            "wait",
-            f"A股分位 {percentile:.2f}% ≥ {buy_below:.0f}%，暂停新增",
-        )
 
-    # US / QDII
-    buy_below = float(r.get("us_normal_percentile_below", 50))
-    take_profit_at = float(r.get("us_take_profit_percentile_at_or_above", 70))
-    premium_pause = float(r.get("qdii_premium_pause_above", 0.02))
-    premium_resume = float(r.get("qdii_premium_resume_below", 0.01))
+        if percentile < buy_below:
+            if premium is not None and premium > premium_pause:
+                return (
+                    "premium_block",
+                    f"QDII溢价 {premium * 100:.2f}% > {premium_pause * 100:.0f}%，暂缓买入",
+                )
+            if premium is not None and premium > premium_resume:
+                return (
+                    "wait",
+                    f"美股分位 {percentile:.2f}% < {buy_below:.0f}% 但溢价 "
+                    f"{premium * 100:.2f}% 仍高于 {premium_resume * 100:.0f}%，等待回落",
+                )
+            return (
+                "buy",
+                f"美股近10年分位 {percentile:.2f}% < {buy_below:.0f}%，可研究定投",
+            )
 
-    if percentile >= take_profit_at:
-        return (
-            "take_profit",
-            f"美股分位 {percentile:.2f}% ≥ {take_profit_at:.0f}%，建议分批止盈1/3~1/2",
-        )
-
-    if percentile < buy_below:
         if premium is not None and premium > premium_pause:
             return (
                 "premium_block",
                 f"QDII溢价 {premium * 100:.2f}% > {premium_pause * 100:.0f}%，暂缓买入",
             )
-        if premium is not None and premium > premium_resume:
-            return (
-                "wait",
-                f"美股分位 {percentile:.2f}% < {buy_below:.0f}% 但溢价 "
-                f"{premium * 100:.2f}% 仍高于 {premium_resume * 100:.0f}%，等待回落",
-            )
-        return "buy", f"美股近10年分位 {percentile:.2f}% < {buy_below:.0f}%，可研究定投"
-
-    if premium is not None and premium > premium_pause:
         return (
-            "premium_block",
-            f"QDII溢价 {premium * 100:.2f}% > {premium_pause * 100:.0f}%，暂缓买入",
+            "wait",
+            f"美股近10年分位 {percentile:.2f}% ≥ {buy_below:.0f}%，暂停新增",
         )
-    return "wait", f"美股近10年分位 {percentile:.2f}% ≥ {buy_below:.0f}%，暂停新增"
+
+    if percentile is None:
+        return "unknown", "缺少 PE 分位"
+
+    double_at = float(r.get("a_share_double_invest_percentile_at_or_below", 30))
+    buy_below = float(r.get("a_share_normal_percentile_below", 40))
+    take_profit_at = float(r.get("a_share_take_profit_percentile_at_or_above", 60))
+    if percentile <= double_at:
+        return "double", f"A股分位 {percentile:.2f}% ≤ {double_at:.0f}%，可研究加倍"
+    if percentile < buy_below:
+        return "buy", f"A股分位 {percentile:.2f}% < {buy_below:.0f}%，可研究定投"
+    if percentile >= take_profit_at:
+        return (
+            "take_profit",
+            f"A股分位 {percentile:.2f}% ≥ {take_profit_at:.0f}%，建议分批止盈1/3~1/2",
+        )
+    return (
+        "wait",
+        f"A股分位 {percentile:.2f}% ≥ {buy_below:.0f}%，暂停新增",
+    )
 
 
 def decision_label(action: str) -> str:
@@ -96,5 +119,5 @@ def decision_label(action: str) -> str:
         "wait": "暂停新增",
         "take_profit": "建议分批止盈",
         "premium_block": "溢价过高暂缓",
-        "unknown": "数据不足",
+        "unknown": "估值未核验/数据不足",
     }.get(action, action)

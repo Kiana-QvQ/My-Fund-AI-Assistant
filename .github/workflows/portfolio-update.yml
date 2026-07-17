@@ -75,7 +75,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -f README.md data/market_snapshot.json data/portfolio_status.json
-          git add -f config/us_pe_snapshot.json data/us_pe_history.json
+          git add -f config/us_pe_snapshot.json data/sp500_pe_multpl.json
           git diff --cached --quiet || git commit -m "自动更新持仓与今日投资判断"
           git push
 
