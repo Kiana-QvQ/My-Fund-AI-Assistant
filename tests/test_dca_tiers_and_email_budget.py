@@ -74,8 +74,8 @@ class DcaSpentLedgerTests(unittest.TestCase):
                     "fund_code": "012773",
                     "trade_date": "2026-07-10",
                     "amount": 2000.0,
-                    "purpose": "other",
-                    "note": "建仓补短债",
+                    "purpose": "bootstrap",
+                    "note": "短债建仓（非定投）",
                 },
                 {
                     "side": "buy",
@@ -85,6 +85,14 @@ class DcaSpentLedgerTests(unittest.TestCase):
                     "purpose": "bootstrap",
                     "note": "宽松观测仓",
                 },
+                {
+                    "side": "buy",
+                    "fund_code": "460300",
+                    "trade_date": "2026-07-12",
+                    "amount": 37.5,
+                    "purpose": "",
+                    "note": "周度定投沪深300",
+                },
             ]
         }
         with tempfile.TemporaryDirectory() as tmp:
@@ -92,7 +100,7 @@ class DcaSpentLedgerTests(unittest.TestCase):
             path.write_text(json.dumps(doc), encoding="utf-8")
             with patch.object(email_mod, "HOLDINGS_PATH", path):
                 spent = email_mod.actual_dca_spent(month)
-        self.assertEqual(spent, 40.5)
+        self.assertEqual(spent, 78.0)  # 40.5 + 37.5；建仓/非定投不计
 
 
 if __name__ == "__main__":

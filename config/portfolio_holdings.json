@@ -11,8 +11,23 @@
       "cost_basis": 2000.0,
       "target_percent": 51.0,
       "asset_class": "短债基金",
-      "note": "已买入，当前记录以实际投入金额为准；净值和份额待数据刷新后补充。"
+      "note": "已建仓短债；权益场外尚未买入。净值和份额待补充。"
     }
   ],
-  "transactions": []
+  "transactions": [
+    {
+      "transaction_id": "bootstrap-012773-2000",
+      "idempotency_key": "bootstrap-012773-2000",
+      "trade_date": "2026-07-01",
+      "time": "2026-07-01T12:00:00+08:00",
+      "side": "buy",
+      "fund_code": "012773",
+      "amount": 2000.0,
+      "cost_delta": 2000.0,
+      "shares": null,
+      "nav": null,
+      "note": "短债建仓（非定投）",
+      "purpose": "bootstrap"
+    }
+  ]
 }

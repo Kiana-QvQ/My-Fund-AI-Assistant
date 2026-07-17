@@ -55,12 +55,31 @@ class PolicyRulesTests(unittest.TestCase):
             "标普500",
             40.0,
             premium=0.025,
+            drawdown_from_52w_high=0.10,
             policy=self.policy,
             verified=True,
             tradeable=True,
         )
         self.assertEqual(action, "premium_block")
         self.assertIn("溢价", reason)
+
+    def test_classify_index_passes_drawdown_for_boost(self) -> None:
+        action, reason = classify_index(
+            "沪深300",
+            25.0,
+            drawdown_from_52w_high=0.10,
+            policy=self.policy,
+        )
+        self.assertEqual(action, "triple")
+        self.assertIn("300", reason)
+
+        action2, reason2 = classify_index(
+            "沪深300",
+            25.0,
+            policy=self.policy,
+        )
+        self.assertEqual(action2, "buy")
+        self.assertIn("缺回撤", reason2)
 
     def test_nasdaq_never_buys(self) -> None:
         action, _ = resolve_action(

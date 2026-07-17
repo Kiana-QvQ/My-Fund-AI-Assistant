@@ -124,7 +124,17 @@ def actual_dca_spent(month_key: str, policy: dict | None = None) -> float:
             continue
         purpose = str(tx.get("purpose") or "").strip().lower()
         note = str(tx.get("note") or "")
-        is_dca = purpose == "dca" or "定投" in note or "dca" in note.lower()
+        # Prefer explicit purpose; avoid matching「非定投」via substring「定投」.
+        if purpose == "dca":
+            is_dca = True
+        elif purpose in ("bootstrap", "build", "other", "take_profit"):
+            is_dca = False
+        else:
+            note_l = note.lower()
+            is_dca = (
+                ("定投" in note and "非定投" not in note)
+                or ("dca" in note_l and "非dca" not in note_l and "non-dca" not in note_l)
+            )
         if not is_dca:
             continue
         total += float(tx.get("amount") or tx.get("cost_delta") or 0.0)
