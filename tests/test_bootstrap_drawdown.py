@@ -32,7 +32,7 @@ class BootstrapDrawdownGateTests(unittest.TestCase):
     def test_bootstrap_requires_drawdown_and_1y_pe(self) -> None:
         action, reason = resolve_action(
             "沪深300",
-            55.0,  # 10y wait zone
+            55.0,  # 10y half zone
             percentile_1y=25.0,
             drawdown_from_52w_high=0.12,
             policy=self.policy,
@@ -42,7 +42,7 @@ class BootstrapDrawdownGateTests(unittest.TestCase):
         self.assertEqual(action, "bootstrap")
         self.assertIn("52周", reason)
 
-    def test_low_1y_pe_without_enough_drawdown_blocks_starter(self) -> None:
+    def test_low_1y_pe_without_enough_drawdown_keeps_half(self) -> None:
         action, reason = resolve_action(
             "沪深300",
             55.0,
@@ -52,12 +52,11 @@ class BootstrapDrawdownGateTests(unittest.TestCase):
             held_cost=0.0,
             target_amount=2700.0,
         )
-        self.assertEqual(action, "wait")
-        self.assertIn("回撤", reason)
-        self.assertNotEqual(action, "bootstrap")
+        self.assertEqual(action, "half")
+        self.assertIn("基础定投", reason)
 
-    def test_drawdown_alone_never_buys(self) -> None:
-        # Deep drawdown but 1y PE still high → no bootstrap.
+    def test_drawdown_alone_never_upgrades_to_bootstrap(self) -> None:
+        # Deep drawdown but 1y PE still high → stay on half, no starter.
         action, reason = resolve_action(
             "沪深300",
             55.0,
@@ -67,8 +66,8 @@ class BootstrapDrawdownGateTests(unittest.TestCase):
             held_cost=0.0,
             target_amount=2700.0,
         )
-        self.assertEqual(action, "wait")
-        self.assertIn("不因跌幅盲目抄底", reason)
+        self.assertEqual(action, "half")
+        self.assertNotIn("启动仓", reason)
 
     def test_high_10y_pe_no_bootstrap_even_if_1y_and_drawdown_ok(self) -> None:
         action, _ = resolve_action(
@@ -82,7 +81,7 @@ class BootstrapDrawdownGateTests(unittest.TestCase):
         )
         self.assertEqual(action, "overvalued_watch")
 
-    def test_missing_drawdown_fail_closed(self) -> None:
+    def test_missing_drawdown_fail_closed_on_starter(self) -> None:
         result = try_bootstrap_action(
             "沪深300",
             percentile_1y=20.0,
@@ -108,6 +107,42 @@ class BootstrapDrawdownGateTests(unittest.TestCase):
             target_amount=2700.0,
         )
         self.assertEqual(action, "buy")
+
+    def test_scheme_b_tiers(self) -> None:
+        cases = [
+            (25.0, "double"),
+            (30.0, "buy"),
+            (39.9, "buy"),
+            (40.0, "half"),
+            (59.9, "half"),
+            (60.0, "overvalued_watch"),
+        ]
+        for pct, expected in cases:
+            action, _ = resolve_action(
+                "沪深300",
+                pct,
+                percentile_1y=90.0,
+                drawdown_from_52w_high=0.0,
+                policy=self.policy,
+                held_cost=0.0,
+                target_amount=2700.0,
+            )
+            self.assertEqual(action, expected, f"pct={pct}")
+
+    def test_us_half_tier(self) -> None:
+        action, reason = resolve_action(
+            "标普500",
+            55.0,
+            percentile_1y=80.0,
+            drawdown_from_52w_high=0.0,
+            policy=self.policy,
+            verified=True,
+            tradeable=True,
+            held_cost=0.0,
+            target_amount=800.0,
+        )
+        self.assertEqual(action, "half")
+        self.assertIn("50%", reason)
 
     def test_attach_drawdowns_merges_fields(self) -> None:
         indexes = {"沪深300": {"pe_percentile": 50.0}}

@@ -28,7 +28,7 @@ from policy_rules import load_policy  # noqa: E402
 SAMPLE_INDEXES = {
     "沪深300": {
         "pe_ttm": 13.0,
-        "pe_percentile": 55.0,
+        "pe_percentile": 65.0,
         "pe_percentile_1y": 50.0,
         "verified": True,
         "tradeable": True,
@@ -36,7 +36,7 @@ SAMPLE_INDEXES = {
     },
     "中证500": {
         "pe_ttm": 20.0,
-        "pe_percentile": 55.0,
+        "pe_percentile": 65.0,
         "pe_percentile_1y": 50.0,
         "verified": True,
         "tradeable": True,

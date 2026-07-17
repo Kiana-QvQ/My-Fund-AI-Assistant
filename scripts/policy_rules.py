@@ -1,8 +1,11 @@
 """Shared valuation / action rules loaded from portfolio_policy.json.
 
-Main filter: near-10y PE percentile (never buy on index level alone).
-Starter filter: near-1y PE ≤ threshold AND drawdown from 52w high ≥ floor.
-Deep drawdown with still-high PE → observe only (no dip-buying).
+Balanced tiering on near-10y PE (Scheme B):
+  A-share: <30% double, 30%~40% full, 40%~60% half, ≥60% stop/take-profit
+  US:      <50% full, 50%~70% half, ≥70% stop/take-profit
+Starter: near-1y PE ≤ threshold AND drawdown from 52w high ≥ floor
+  (may upgrade half → bootstrap while under starter cap).
+Index absolute price/level never triggers buys alone.
 """
 
 from __future__ import annotations
@@ -32,6 +35,20 @@ def bootstrap_rules(policy: dict | None = None) -> dict:
     return policy.get("bootstrap", {})
 
 
+def allocation_fraction(action: str, policy: dict | None = None) -> float:
+    """How much of the sleeve monthly budget to invest for this action."""
+    r = rules(policy)
+    if action == "double":
+        return 2.0
+    if action == "buy":
+        return 1.0
+    if action == "half":
+        return float(r.get("a_share_half_fraction", 0.5))
+    if action == "bootstrap":
+        return 1.0
+    return 0.0
+
+
 def classify_index(
     name: str,
     percentile: float | None,
@@ -43,19 +60,16 @@ def classify_index(
 ) -> tuple[str, str]:
     """Return (action, reason) for an index sleeve using the main 10y rules.
 
-    Actions: buy | double | wait | take_profit | premium_block | unknown | reference
-    Index absolute price/level is never used here.
+    Actions: buy | double | half | wait | take_profit | premium_block | unknown | reference
     """
     r = rules(policy)
 
-    # US sleeves require explicit verification before any buy / PE take-profit.
     if name in US:
         if name == "纳斯达克100":
             return (
                 "reference",
                 "纳斯达克100仅展示 QQQ 参考估值（stockanalysis/yfinance），未核验，禁止自动买入",
             )
-        # Must be explicitly True — missing field means unverified.
         if verified is not True or tradeable is False:
             return (
                 "unknown",
@@ -65,6 +79,8 @@ def classify_index(
             return "unknown", "缺少 PE 分位"
 
         buy_below = float(r.get("us_normal_percentile_below", 50))
+        half_below = float(r.get("us_half_percentile_below", 70))
+        half_frac = float(r.get("us_half_fraction", 0.5))
         take_profit_at = float(r.get("us_take_profit_percentile_at_or_above", 70))
         premium_pause = float(r.get("qdii_premium_pause_above", 0.02))
         premium_resume = float(r.get("qdii_premium_resume_below", 0.01))
@@ -72,10 +88,11 @@ def classify_index(
         if percentile >= take_profit_at:
             return (
                 "take_profit",
-                f"美股近10年分位 {percentile:.2f}% ≥ {take_profit_at:.0f}%，建议分批止盈1/3~1/2",
+                f"美股近10年分位 {percentile:.2f}% ≥ {take_profit_at:.0f}%，"
+                f"暂停新增并可研究分批止盈1/3~1/2",
             )
 
-        if percentile < buy_below:
+        def _premium_gate(base_action: str, base_reason: str) -> tuple[str, str]:
             if premium is not None and premium > premium_pause:
                 return (
                     "premium_block",
@@ -84,12 +101,22 @@ def classify_index(
             if premium is not None and premium > premium_resume:
                 return (
                     "wait",
-                    f"美股近10年分位 {percentile:.2f}% < {buy_below:.0f}% 但溢价 "
-                    f"{premium * 100:.2f}% 仍高于 {premium_resume * 100:.0f}%，等待回落",
+                    f"{base_reason}，但溢价 {premium * 100:.2f}% 仍高于 "
+                    f"{premium_resume * 100:.0f}%，等待回落",
                 )
-            return (
+            return base_action, base_reason
+
+        if percentile < buy_below:
+            return _premium_gate(
                 "buy",
-                f"美股近10年分位 {percentile:.2f}% < {buy_below:.0f}%，可研究定投",
+                f"美股近10年分位 {percentile:.2f}% < {buy_below:.0f}%，可研究满额定投",
+            )
+
+        if percentile < half_below:
+            return _premium_gate(
+                "half",
+                f"美股近10年分位 {percentile:.2f}% 处于 "
+                f"{buy_below:.0f}%~{half_below:.0f}%，按 {half_frac * 100:.0f}% 基础定投",
             )
 
         if premium is not None and premium > premium_pause:
@@ -99,27 +126,50 @@ def classify_index(
             )
         return (
             "wait",
-            f"美股近10年分位 {percentile:.2f}% ≥ {buy_below:.0f}%，暂停新增",
+            f"美股近10年分位 {percentile:.2f}% ≥ {half_below:.0f}%，暂停新增",
         )
 
     if percentile is None:
         return "unknown", "缺少 PE 分位"
 
-    double_at = float(r.get("a_share_double_invest_percentile_at_or_below", 30))
+    # Prefer new key; fall back to legacy ≤30 key if present in old configs.
+    double_below = float(
+        r.get(
+            "a_share_double_invest_percentile_below",
+            r.get("a_share_double_invest_percentile_at_or_below", 30),
+        )
+    )
     buy_below = float(r.get("a_share_normal_percentile_below", 40))
+    half_below = float(r.get("a_share_half_percentile_below", 60))
+    half_frac = float(r.get("a_share_half_fraction", 0.5))
     take_profit_at = float(r.get("a_share_take_profit_percentile_at_or_above", 60))
-    if percentile <= double_at:
-        return "double", f"A股近10年分位 {percentile:.2f}% ≤ {double_at:.0f}%，可研究加倍"
+
+    if percentile < double_below:
+        return (
+            "double",
+            f"A股近10年分位 {percentile:.2f}% < {double_below:.0f}%，可研究加倍定投",
+        )
     if percentile < buy_below:
-        return "buy", f"A股近10年分位 {percentile:.2f}% < {buy_below:.0f}%，可研究定投"
+        return (
+            "buy",
+            f"A股近10年分位 {percentile:.2f}% 处于 "
+            f"{double_below:.0f}%~{buy_below:.0f}%，可研究满额定投",
+        )
+    if percentile < half_below:
+        return (
+            "half",
+            f"A股近10年分位 {percentile:.2f}% 处于 "
+            f"{buy_below:.0f}%~{half_below:.0f}%，按 {half_frac * 100:.0f}% 基础定投",
+        )
     if percentile >= take_profit_at:
         return (
             "take_profit",
-            f"A股近10年分位 {percentile:.2f}% ≥ {take_profit_at:.0f}%，建议分批止盈1/3~1/2",
+            f"A股近10年分位 {percentile:.2f}% ≥ {take_profit_at:.0f}%，"
+            f"暂停新增并可研究分批止盈1/3~1/2",
         )
     return (
         "wait",
-        f"A股近10年分位 {percentile:.2f}% ≥ {buy_below:.0f}%，暂停新增",
+        f"A股近10年分位 {percentile:.2f}% ≥ {half_below:.0f}%，暂停新增",
     )
 
 
@@ -198,7 +248,6 @@ def try_bootstrap_action(
 
     ok_dd, dd_reason = _drawdown_ok_for_bootstrap(drawdown_from_52w_high, policy)
     if not ok_dd:
-        # Surface as wait so callers see why starter was blocked.
         return "wait", dd_reason
 
     r = rules(policy)
@@ -226,8 +275,8 @@ def try_bootstrap_action(
         "bootstrap",
         f"启动仓：近1年分位 {percentile_1y:.2f}% ≤ {threshold:.0f}% "
         f"且相对52周高点回撤 {drawdown_from_52w_high * 100:.2f}% ≥ {need * 100:.0f}% "
-        f"（主策略近10年未到买入线；不以指数点位单独触发）；"
-        f"上限约 {cap:.0f} 元，本期待建约 {remaining:.0f} 元；之后仍等十年分位加仓",
+        f"（可在半额/未满额档额外建仓；不以指数点位单独触发）；"
+        f"上限约 {cap:.0f} 元，本期待建约 {remaining:.0f} 元；之后仍按十年分位分档",
     )
 
 
@@ -244,12 +293,10 @@ def deep_drawdown_observe_reason(
     if drawdown_from_52w_high < deep:
         return None
     r = rules(policy)
-    # "PE still high" ≈ not in the normal buy zone on the 10y window.
-    # Use A-share buy line as default for message; callers still own action.
-    buy_below = float(r.get("a_share_normal_percentile_below", 40))
-    us_buy = float(r.get("us_normal_percentile_below", 50))
-    # Generic: if percentile is at/above the tighter of pause thresholds, treat as high.
-    high_bar = min(buy_below, us_buy)
+    # High = at/above take-profit / stop-new zone (not merely half-buy zone).
+    a_stop = float(r.get("a_share_take_profit_percentile_at_or_above", 60))
+    us_stop = float(r.get("us_take_profit_percentile_at_or_above", 70))
+    high_bar = min(a_stop, us_stop)
     if percentile < high_bar:
         return None
     return (
@@ -271,7 +318,7 @@ def resolve_action(
     held_cost: float = 0.0,
     target_amount: float = 0.0,
 ) -> tuple[str, str]:
-    """Main 10y PE first; optional 1y PE + drawdown starter; never buy on price alone."""
+    """Main 10y tiering first; optional starter upgrade from half; never buy on price alone."""
     primary, reason = classify_index(
         name,
         percentile,
@@ -292,8 +339,8 @@ def resolve_action(
             return primary, f"{reason}；{observe}"
         return primary, reason
 
-    # Starter only when main 10y rule is "wait" (not yet buy, not take-profit zone).
-    if primary == "wait":
+    # Starter may upgrade half (or legacy wait) while under starter cap.
+    if primary in ("half", "wait"):
         boot = try_bootstrap_action(
             name,
             percentile_1y=percentile_1y,
@@ -306,9 +353,17 @@ def resolve_action(
             target_amount=target_amount,
         )
         if boot is not None:
-            return boot
+            action, boot_reason = boot
+            if action == "bootstrap":
+                return action, boot_reason
+            if action == "premium_block":
+                return action, boot_reason
+            # Insufficient drawdown etc.: keep half if that was primary.
+            if primary == "half":
+                return primary, reason
+            if action == "wait" and primary == "wait":
+                return action, boot_reason
 
-    # High valuation but no ledger position: observe only, never prompt to sell.
     if primary == "take_profit" and held <= 0:
         observe = deep_drawdown_observe_reason(
             percentile, drawdown_from_52w_high, policy
@@ -317,6 +372,14 @@ def resolve_action(
         if observe:
             reason_out = f"{reason_out}；{observe}"
         return "overvalued_watch", reason_out
+
+    if primary == "half":
+        observe = deep_drawdown_observe_reason(
+            percentile, drawdown_from_52w_high, policy
+        )
+        if observe:
+            return "half", f"{reason}；{observe}"
+        return primary, reason
 
     if primary == "wait":
         observe = deep_drawdown_observe_reason(
@@ -330,8 +393,9 @@ def resolve_action(
 
 def decision_label(action: str) -> str:
     return {
-        "buy": "可研究定投",
+        "buy": "可研究满额定投",
         "double": "可研究加倍",
+        "half": "半额基础定投",
         "bootstrap": "启动仓可建",
         "wait": "暂停新增",
         "take_profit": "建议分批止盈",

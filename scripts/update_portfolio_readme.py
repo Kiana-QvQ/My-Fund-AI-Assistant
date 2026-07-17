@@ -66,6 +66,7 @@ def summarize_equity(indexes: dict, holdings_cost: dict[str, float], principal: 
     names = ("沪深300", "中证500", "标普500", "纳斯达克100")
     policy = load_policy()
     buyable: list[str] = []
+    half: list[str] = []
     bootstrap: list[str] = []
     take_profit: list[str] = []
     blocked: list[str] = []
@@ -111,6 +112,8 @@ def summarize_equity(indexes: dict, holdings_cost: dict[str, float], principal: 
             bootstrap.append(name)
         elif action in ("buy", "double"):
             buyable.append(name)
+        elif action == "half":
+            half.append(name)
         elif action == "take_profit":
             take_profit.append(name)
         elif action == "premium_block":
@@ -122,6 +125,8 @@ def summarize_equity(indexes: dict, holdings_cost: dict[str, float], principal: 
             paused.append(name)
     if buyable or bootstrap:
         tone = "🟢 权益有可买/启动仓信号"
+    elif half:
+        tone = "🟢 权益半额基础定投"
     elif take_profit:
         tone = "🟠 权益进入止盈观察"
     elif blocked:
@@ -211,10 +216,11 @@ def build_status() -> dict:
     for allocation in allocations:
         if allocation["fund_code"] in held_codes:
             continue
-        if allocation["action"] in ("buy", "double", "take_profit"):
+        if allocation["action"] in ("buy", "double", "half", "take_profit"):
             decision = {
-                "buy": "可研究买入",
+                "buy": "可研究满额定投",
                 "double": "可研究加倍",
+                "half": "半额基础定投",
                 "take_profit": "建议分批止盈",
             }[allocation["action"]]
             rows.append(
@@ -429,8 +435,9 @@ def render(status: dict) -> str:
     lines.extend(
         [
             "",
-            "> A股近10年分位为主策略（＜40%定投 / ≤30%加倍 / ≥60%止盈观察）；"
-            "近1年分位≤30% **且** 相对52周高点回撤≥10% 才可建≤目标仓15%启动仓；"
+            "> A股近10年分位分档（平衡型）：＜30%加倍 / 30%~40%满额 / 40%~60%半额 / ≥60%停买与止盈观察；"
+            "美股：＜50%满额 / 50%~70%半额 / ≥70%停买。"
+            "近1年分位≤30% **且** 相对52周高点回撤≥10% 时可额外建≤目标仓15%启动仓；"
             "回撤≥20%但十年PE仍高则只观察、不因跌幅抄底；**指数绝对点位不单独触发买入**。"
             "标普用 Multpl 指数PE，四层校验通过才可交易判断。"
             "纳指 PE 来自 QQQ（stockanalysis/yfinance）**仅供参考**；样本不足时分位显示「无统计分位」。"

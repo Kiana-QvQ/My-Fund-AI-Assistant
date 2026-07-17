@@ -22,6 +22,7 @@ if str(SCRIPTS) not in sys.path:
 from a_share_pe import query_pe_snapshot  # noqa: E402
 from index_drawdown import attach_drawdowns  # noqa: E402
 from policy_rules import (  # noqa: E402
+    allocation_fraction,
     bootstrap_remaining,
     load_policy,
     resolve_action,
@@ -282,6 +283,7 @@ def action_for(
     if signal in (
         "buy",
         "double",
+        "half",
         "bootstrap",
         "premium_block",
         "reference",
@@ -305,6 +307,7 @@ def build_plan(
     take_profit_notes: list[str] = []
     bootstrap_notes: list[str] = []
     short_bond = next(item for item in funds if item["asset"] == "short_bond")
+    r = policy.get("rules") or {}
 
     for item in funds:
         fund = item["fund"]
@@ -331,6 +334,14 @@ def build_plan(
             planned = base * 2
             double_extra += base
             reason = f"{reason}；加倍部分从短债底仓调拨"
+        elif action == "half":
+            if item["asset"] == "us":
+                frac = float(r.get("us_half_fraction", 0.5))
+            else:
+                frac = float(r.get("a_share_half_fraction", allocation_fraction("half", policy)))
+            planned = round(base * frac, 2)
+            held_back += max(base - planned, 0.0)
+            reason = f"{reason}；未用额度转入短债/备用金"
         elif action == "bootstrap":
             remaining = bootstrap_remaining(held, target_amount, policy)
             planned = round(min(base, remaining), 2)
@@ -343,7 +354,6 @@ def build_plan(
                 bootstrap_notes.append(
                     f"{item['name']} 启动仓约 {planned:.2f} 元（上限剩余 {remaining:.2f}）"
                 )
-                # unused first-month slice beyond starter returns to short bond
                 if base > planned:
                     held_back += base - planned
         allocations.append(
@@ -365,7 +375,7 @@ def build_plan(
         short_plan["planned_amount"] = round(max(adjusted, 0.0), 2)
         notes = []
         if held_back:
-            notes.append("权益暂停/止盈观察/启动仓结余资金转入短债底仓")
+            notes.append("权益暂停/半额结余/止盈观察/启动仓结余资金转入短债底仓")
         if double_extra:
             notes.append(f"已为低估加倍调出 {double_extra:.2f} 元")
         if notes:

@@ -12,15 +12,18 @@
   "rules": {
     "rebalance_period": "annual",
     "rebalance_deviation": 0.05,
+    "a_share_double_invest_percentile_below": 30,
     "a_share_normal_percentile_below": 40,
-    "a_share_double_invest_percentile_at_or_below": 30,
-    "a_share_pause_percentile_at_or_above": 40,
+    "a_share_half_percentile_below": 60,
+    "a_share_half_fraction": 0.5,
     "a_share_take_profit_percentile_at_or_above": 60,
     "us_normal_percentile_below": 50,
-    "us_pause_percentile_at_or_above": 50,
+    "us_half_percentile_below": 70,
+    "us_half_fraction": 0.5,
     "us_take_profit_percentile_at_or_above": 70,
     "qdii_premium_pause_above": 0.02,
-    "qdii_premium_resume_below": 0.01
+    "qdii_premium_resume_below": 0.01,
+    "note": "平衡型分档：A股近10年PE ＜30%加倍、30%~40%满额、40%~60%半额、≥60%停买；美股 ＜50%满额、50%~70%半额、≥70%停买。启动仓与QDII溢价规则见 bootstrap。"
   },
   "bootstrap": {
     "enabled": true,
@@ -32,7 +35,7 @@
     "min_amount": 10,
     "indexes": ["沪深300", "中证500", "标普500"],
     "exclude": ["纳斯达克100"],
-    "note": "主规则仍用近10年PE分位（A股＜40%定投/≤30%加倍/≥60%止盈观察；美股＜50%/≥70%）。启动仓辅助：近1年PE≤30% 且 相对52周高点回撤≥10% 才允许≤目标仓15%的小额启动仓；回撤≥20%但十年PE仍高则只观察不抄底。指数绝对点位不单独触发买入。短债012773不看这三项，按建仓计划与申购状态。QDII溢价＞2%一律暂缓买入。按1万元本金启动仓上限约：沪深300≤405、中证500≤165、标普500≤120。"
+    "note": "平衡型：十年PE主分档（含40%~60%/50%~70%半额定投）。启动仓额外条件：近1年PE≤30%且52周回撤≥10%，可在半额档优先建≤目标仓15%启动仓。回撤≥20%且十年PE仍高则只观察不抄底。点位不单独触发。短债012773不看PE/回撤。QDII溢价＞2%暂缓。1万元启动仓上限约：沪深300≤405、中证500≤165、标普500≤120。"
   },
   "guardrails": {
     "paper_or_advice_only": true,

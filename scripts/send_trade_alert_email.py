@@ -151,6 +151,12 @@ def collect_signals(snapshot: dict, monthly: float, policy: dict) -> dict:
             has_bootstrap = True
         elif action == "double":
             amount = round(month_slice * 2, 2)
+        elif action == "half":
+            frac_key = (
+                "a_share_half_fraction" if name in A_SHARE else "us_half_fraction"
+            )
+            frac = float(r.get(frac_key, 0.5))
+            amount = round(month_slice * frac, 2)
         else:
             amount = month_slice
         pe_text = f"{pe:.2f}" if isinstance(pe, (int, float)) else "-"
@@ -187,14 +193,13 @@ def collect_signals(snapshot: dict, monthly: float, policy: dict) -> dict:
                 if err not in alert_lines:
                     alert_lines.append(str(err))
 
-        if action in ("buy", "double", "bootstrap"):
+        if action in ("buy", "double", "half", "bootstrap"):
             buy_lines.append(f"  · {fund_name}（{code}）约 {amount:.2f} 元（{label}）")
             if name in A_SHARE:
                 buy_a.append(name)
             else:
                 buy_us.append(name)
-            if action == "bootstrap":
-                # Remainder of the monthly equity sleeve stays in short bond.
+            if action in ("bootstrap", "half"):
                 paused_amount += max(month_slice - amount, 0.0)
         elif action == "take_profit" and held_cost > 0:
             take_profit_lines.append(
@@ -317,8 +322,8 @@ def build_body(
 {why}
 
 【策略时点】
-1）A股近10年分位＜{a_buy:.0f}% 可买；≤30% 加倍；≥60% 分批止盈
-2）标普500：Multpl核验通过后，近10年分位＜{us_buy:.0f}% 可买；≥70% 止盈
+1）A股近10年分位：＜30%加倍；30%~40%满额；40%~60%半额；≥60%停买/止盈观察
+2）标普500（Multpl核验通过后）：＜{us_buy:.0f}%满额；50%~70%半额；≥70%停买/止盈观察
 3）启动仓例外：{data.get('boot_line', '')}（纳指除外）
 4）纳斯达克100：估值未核验，永不自动买入
 5）QDII 场内溢价＞2% 暂缓买入
