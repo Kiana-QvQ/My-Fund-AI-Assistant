@@ -84,6 +84,40 @@ def _append_tx(doc: dict, payload: dict) -> None:
     doc.setdefault("transactions", []).append(tx)
 
 
+def _require_positive(label: str, value: float | None, *, allow_none: bool = True) -> None:
+    if value is None:
+        if allow_none:
+            return
+        raise SystemExit(f"{label} 不能为空，且必须 > 0")
+    if value <= 0:
+        raise SystemExit(f"{label} 必须 > 0，收到 {value}")
+
+
+def _require_non_negative(label: str, value: float | None, *, allow_none: bool = True) -> None:
+    if value is None:
+        if allow_none:
+            return
+        raise SystemExit(f"{label} 不能为空，且必须 >= 0")
+    if value < 0:
+        raise SystemExit(f"{label} 必须 >= 0，收到 {value}")
+
+
+def _assert_amount_matches_shares_nav(
+    *,
+    amount: float,
+    shares: float,
+    nav: float,
+    side: str,
+) -> None:
+    expected = round(shares * nav, 2)
+    tol = max(0.02, abs(amount) * 0.005)
+    if abs(expected - round(amount, 2)) > tol:
+        raise SystemExit(
+            f"{side}金额与份额×净值不一致：金额={amount:.2f}，"
+            f"份额×净值={expected:.2f}（容差 {tol:.2f}）"
+        )
+
+
 def apply_buy(
     doc: dict,
     fund_code: str,
@@ -95,8 +129,10 @@ def apply_buy(
 ) -> dict:
     if fund_code not in CATALOG:
         raise SystemExit(f"未知基金代码: {fund_code}，可选: {', '.join(CATALOG)}")
-    if amount <= 0:
-        raise SystemExit("买入金额必须 > 0")
+    _require_positive("买入金额", amount, allow_none=False)
+    _require_positive("买入份额", shares)
+    _require_positive("买入净值", nav)
+
     meta = CATALOG[fund_code]
     holdings = doc.setdefault("holdings", [])
     row = _find(holdings, fund_code)
@@ -113,8 +149,12 @@ def apply_buy(
         holdings.append(row)
 
     buy_shares = shares
-    if buy_shares is None and nav is not None and nav > 0:
+    if buy_shares is None and nav is not None:
         buy_shares = round(amount / nav, 4)
+    if buy_shares is not None and nav is not None:
+        _assert_amount_matches_shares_nav(
+            amount=amount, shares=float(buy_shares), nav=float(nav), side="买入"
+        )
 
     row["cost_basis"] = round(float(row.get("cost_basis") or 0) + amount, 2)
     if buy_shares is not None:
@@ -177,30 +217,59 @@ def apply_sell(
         )
         cost = legacy_amount
 
+    _require_positive("赎回市值 proceeds", proceeds)
+    _require_positive("扣减成本 cost", cost)
+    _require_positive("卖出份额 shares", shares)
+    _require_positive("卖出净值 nav", nav)
+
     sell_shares = shares
-    if sell_shares is None and proceeds is not None and nav is not None and nav > 0:
+    if sell_shares is None and proceeds is not None and nav is not None:
         sell_shares = round(proceeds / nav, 4)
 
-    cost_reduction: float | None = cost
-    if cost_reduction is None and sell_shares is not None and current_shares_f:
+    if sell_shares is not None:
+        if current_shares_f is None:
+            raise SystemExit("持仓未记录份额，无法按份额卖出；请改用 --cost，或先 set 份额")
         if sell_shares > current_shares_f + 1e-9:
             raise SystemExit(
                 f"卖出份额 {sell_shares} 超过持有份额 {current_shares_f}"
             )
+
+    cost_reduction: float | None = cost
+    if cost_reduction is None and sell_shares is not None and current_shares_f:
         cost_reduction = round(current_cost * (sell_shares / current_shares_f), 2)
     if cost_reduction is None:
         raise SystemExit(
             "卖出需指定 --cost（扣减成本）或 --shares（按持仓比例扣成本）；"
             "市值请用 --proceeds 单独记录"
         )
-    if cost_reduction <= 0:
-        raise SystemExit("扣减成本必须 > 0")
     if cost_reduction > current_cost + 1e-9:
         raise SystemExit(f"扣减成本 {cost_reduction} 超过已投入成本 {current_cost}")
+
+    # When both cost and shares given, cost should match pro-rata book cost.
+    if (
+        cost is not None
+        and sell_shares is not None
+        and current_shares_f
+        and current_shares_f > 0
+    ):
+        expected_cost = round(current_cost * (sell_shares / current_shares_f), 2)
+        tol = max(0.02, current_cost * 0.005)
+        if abs(expected_cost - cost_reduction) > tol:
+            raise SystemExit(
+                f"卖出成本与份额不成比例：--cost={cost_reduction:.2f}，"
+                f"按持仓均摊应为 {expected_cost:.2f}（容差 {tol:.2f}）"
+            )
 
     realized_proceeds = proceeds
     if realized_proceeds is None and sell_shares is not None and nav is not None:
         realized_proceeds = round(sell_shares * nav, 2)
+    if realized_proceeds is not None and sell_shares is not None and nav is not None:
+        _assert_amount_matches_shares_nav(
+            amount=realized_proceeds,
+            shares=float(sell_shares),
+            nav=float(nav),
+            side="卖出",
+        )
 
     row["cost_basis"] = round(current_cost - cost_reduction, 2)
     if sell_shares is not None and current_shares_f is not None:
@@ -236,6 +305,8 @@ def apply_set(
 ) -> dict:
     if fund_code not in CATALOG:
         raise SystemExit(f"未知基金代码: {fund_code}")
+    _require_non_negative("覆盖成本", cost, allow_none=False)
+    _require_non_negative("覆盖份额", shares)
     meta = CATALOG[fund_code]
     holdings = doc.setdefault("holdings", [])
     row = _find(holdings, fund_code)

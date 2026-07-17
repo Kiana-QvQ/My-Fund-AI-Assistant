@@ -156,7 +156,8 @@ def collect_signals(snapshot: dict, monthly: float, policy: dict) -> dict:
         )
         pct_1y_text = f"{pct_1y:.2f}%" if isinstance(pct_1y, (int, float)) else (
             "无统计分位" if name == "纳斯达克100" else "-"
-        )        premium_text = (
+        )
+        premium_text = (
             f"{item.get('qdii_premium_pct'):.2f}%"
             if isinstance(item.get("qdii_premium_pct"), (int, float))
             else "-"
