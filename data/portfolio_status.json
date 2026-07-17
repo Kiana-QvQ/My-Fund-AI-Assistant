@@ -1,7 +1,7 @@
 {
   "as_of": "2026-07-17",
-  "generated_at": "2026-07-17T11:19:42+08:00",
-  "updated_at_display": "2026-07-17 11:19:42 CST",
+  "generated_at": "2026-07-17T11:28:21+08:00",
+  "updated_at_display": "2026-07-17 11:28:21 CST",
   "total_cost_basis": 2000.0,
   "building_principal": 10000.0,
   "initial_build_percent": 20.0,
@@ -12,7 +12,7 @@
     "沪深300：建议分批止盈，1年分位72.4%",
     "中证500：建议分批止盈，1年分位85.6%",
     "标普500：建议分批止盈，溢价4.82%，1年分位100.0%",
-    "纳斯达克100：估值未核验/数据不足，溢价6.71%"
+    "纳斯达克100：仅参考·不自动买，溢价6.71%"
   ],
   "rows": [
     {
@@ -95,24 +95,25 @@
       "pe_percentile": null,
       "pe_percentile_1y": null,
       "verified": false,
-      "status": "unverified",
+      "status": "reference_unavailable",
       "tradeable": false,
       "date": "2026-07-17",
-      "window": "无稳定免费指数PE历史序列",
-      "source": "hardcoded_unverified",
-      "reason": "纳斯达克100暂无稳定可爬的指数PE历史序列，估值未核验，禁止自动买入",
+      "window": "yfinance QQQ trailingPE（仅参考）",
+      "source": "yfinance:QQQ.trailingPE",
+      "reason": "纳指参考估值获取失败：Too Many Requests. Rate limited. Try after a while.；仍禁止自动买入",
       "validation_errors": [
-        "纳斯达克100硬编码为未核验"
+        "Too Many Requests. Rate limited. Try after a while."
       ],
       "qdii_premium": 0.0671,
       "qdii_premium_pct": 6.71,
       "qdii_etf": "159941",
       "qdii_premium_status": "ok",
-      "qdii_premium_reason": "场内159941 溢价 6.71%"
+      "qdii_premium_reason": "场内159941 溢价 6.71%",
+      "reference_only": true
     }
   },
   "holdings_cost": {
     "012773": 2000.0
   },
-  "data_status": "market_snapshot.json 已加载；标普PE已核验（Multpl，2026-07-16）；纳指估值硬编码未核验"
+  "data_status": "market_snapshot.json 已加载；标普PE已核验（Multpl，2026-07-16）；纳指估值未核验/仅参考"
 }

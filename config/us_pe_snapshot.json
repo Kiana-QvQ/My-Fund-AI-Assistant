@@ -1,8 +1,8 @@
 {
   "as_of": "2026-07-17",
-  "updated_at": "2026-07-17T11:19:21+08:00",
-  "window": "标普：Multpl近10年；纳指：未核验",
-  "source": "multpl.com S&P 500 PE (current + monthly history) + local percentile; NDX hardcoded unverified",
+  "updated_at": "2026-07-17T11:28:13+08:00",
+  "window": "标普：Multpl近10年；纳指：yfinance QQQ参考(未核验)",
+  "source": "multpl.com S&P 500 PE (current + monthly history) + local percentile; NDX yfinance QQQ trailingPE reference-only",
   "indexes": {
     "标普500": {
       "pe_ttm": 32.41,
@@ -20,7 +20,7 @@
       "history_points_1y": 12,
       "history_from_cache": true,
       "current_timestamp": "4:00 PM EDT, Thu Jul 16",
-      "fetched_at": "2026-07-17T11:19:21+08:00",
+      "fetched_at": "2026-07-17T11:28:08+08:00",
       "reason": "Multpl 指数PE=32.41，近10年分位 93.33% （样本 120），近1年分位 100.00%（月度序列来自缓存）",
       "validation_errors": []
     },
@@ -29,14 +29,15 @@
       "pe_percentile": null,
       "pe_percentile_1y": null,
       "verified": false,
-      "status": "unverified",
+      "status": "reference_unavailable",
       "tradeable": false,
-      "date": null,
-      "window": "无稳定免费指数PE历史序列",
-      "source": "hardcoded_unverified",
-      "reason": "纳斯达克100暂无稳定可爬的指数PE历史序列，估值未核验，禁止自动买入",
+      "reference_only": true,
+      "date": "2026-07-17",
+      "window": "yfinance QQQ trailingPE（仅参考）",
+      "source": "yfinance:QQQ.trailingPE",
+      "reason": "纳指参考估值获取失败：Too Many Requests. Rate limited. Try after a while.；仍禁止自动买入",
       "validation_errors": [
-        "纳斯达克100硬编码为未核验"
+        "Too Many Requests. Rate limited. Try after a while."
       ]
     }
   },

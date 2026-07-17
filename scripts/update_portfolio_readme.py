@@ -107,6 +107,8 @@ def summarize_equity(indexes: dict, holdings_cost: dict[str, float], principal: 
             blocked.append(name)
         elif action == "unknown":
             missing.append(name)
+        elif action == "reference":
+            paused.append(name)
         else:
             paused.append(name)
     if buyable or bootstrap:
@@ -261,8 +263,10 @@ def build_status() -> dict:
         data_status += f"；标普PE已核验（Multpl，{spx.get('date', '-')}）"
     elif spx:
         data_status += "；标普PE未核验/校验失败（禁止自动买入）"
-    if ndx.get("verified") is not True:
-        data_status += "；纳指估值硬编码未核验"
+    if ndx.get("reference_only") and isinstance(ndx.get("pe_ttm"), (int, float)):
+        data_status += f"；纳指参考PE {ndx['pe_ttm']:.2f}（yfinance QQQ，不交易）"
+    elif ndx.get("verified") is not True:
+        data_status += "；纳指估值未核验/仅参考"
 
     status = {
         "as_of": as_of,
@@ -370,20 +374,38 @@ def render(status: dict) -> str:
             held_cost=held,
             target_amount=principal * weight,
         )
-        pe_text = f"{pe:.2f}" if isinstance(pe, (int, float)) else "待核验"
+        pe_text = f"{pe:.2f}" if isinstance(pe, (int, float)) else "-"
         percentile_text = (
-            f"{percentile:.2f}%" if isinstance(percentile, (int, float)) else "待核验"
+            f"{percentile:.2f}%" if isinstance(percentile, (int, float)) else "-"
         )
         percentile_1y_text = (
             f"{percentile_1y:.2f}%"
             if isinstance(percentile_1y, (int, float))
-            else "待核验"
+            else "-"
         )
+        # NDX: mark yfinance figures as reference-only so the table is not blank.
+        if name == "纳斯达克100" or index.get("reference_only"):
+            if isinstance(pe, (int, float)):
+                pe_text = f"{pe:.2f}※"
+            else:
+                pe_text = "暂缺※"
+            if isinstance(percentile, (int, float)):
+                percentile_text = f"{percentile:.1f}%※"
+            else:
+                percentile_text = "样本累积中※"
+            if isinstance(percentile_1y, (int, float)):
+                percentile_1y_text = f"{percentile_1y:.1f}%※"
+            else:
+                percentile_1y_text = "样本累积中※"
+            if not data_date or data_date == "待核验":
+                data_date = index.get("date") or status.get("as_of") or "-"
+            if isinstance(premium_pct, (int, float)):
+                premium_text = f"{premium_pct:.2f}%"
         decision = decision_label(action)
-        if action == "unknown":
-            if name == "纳斯达克100":
-                decision = "未核验，禁止自动买入"
-            elif index.get("verified") is not True:
+        if action == "reference" or name == "纳斯达克100":
+            decision = "仅参考·不自动买"
+        elif action == "unknown":
+            if index.get("verified") is not True:
                 decision = "未核验/校验失败，禁止自动买入"
             else:
                 decision = "数据不足，暂停自动买入"
@@ -396,7 +418,8 @@ def render(status: dict) -> str:
         [
             "",
             "> A股近10年分位为主策略；近1年分位用于启动仓（≤30%且未满目标仓15%可先建小仓）。"
-            "标普用 Multpl 指数PE，四层校验通过才可交易判断；纳指硬编码未核验、永不自动买入。"
+            "标普用 Multpl 指数PE，四层校验通过才可交易判断。"
+            "纳指※为 yfinance(QQQ) trailingPE **仅供参考**（ETF≠指数PE），永不自动买入。"
             "爬虫失败严禁用过期缓存做买卖。QDII溢价＞2%暂缓买入。"
             "1万元本金启动仓上限约：沪深300 405 / 中证500 165 / 标普500 120 元。",
         ]

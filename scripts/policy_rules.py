@@ -46,8 +46,8 @@ def classify_index(
     if name in US:
         if name == "纳斯达克100":
             return (
-                "unknown",
-                "纳斯达克100估值未核验，禁止自动买入",
+                "reference",
+                "纳斯达克100仅展示 yfinance(QQQ) 参考估值，未核验，禁止自动买入",
             )
         # Must be explicitly True — missing field means unverified.
         if verified is not True or tradeable is False:
@@ -249,4 +249,5 @@ def decision_label(action: str) -> str:
         "take_profit": "建议分批止盈",
         "premium_block": "溢价过高暂缓",
         "unknown": "估值未核验/数据不足",
+        "reference": "仅参考·不自动买",
     }.get(action, action)

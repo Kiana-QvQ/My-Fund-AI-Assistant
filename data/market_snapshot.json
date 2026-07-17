@@ -122,20 +122,21 @@
       "pe_percentile": null,
       "pe_percentile_1y": null,
       "verified": false,
-      "status": "unverified",
+      "status": "reference_unavailable",
       "tradeable": false,
       "date": "2026-07-17",
-      "window": "无稳定免费指数PE历史序列",
-      "source": "hardcoded_unverified",
-      "reason": "纳斯达克100暂无稳定可爬的指数PE历史序列，估值未核验，禁止自动买入",
+      "window": "yfinance QQQ trailingPE（仅参考）",
+      "source": "yfinance:QQQ.trailingPE",
+      "reason": "纳指参考估值获取失败：Too Many Requests. Rate limited. Try after a while.；仍禁止自动买入",
       "validation_errors": [
-        "纳斯达克100硬编码为未核验"
+        "Too Many Requests. Rate limited. Try after a while."
       ],
       "qdii_premium": 0.0671,
       "qdii_premium_pct": 6.71,
       "qdii_etf": "159941",
       "qdii_premium_status": "ok",
-      "qdii_premium_reason": "场内159941 溢价 6.71%"
+      "qdii_premium_reason": "场内159941 溢价 6.71%",
+      "reference_only": true
     }
   },
   "qdii_premiums": {
