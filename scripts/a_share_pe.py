@@ -47,18 +47,30 @@ def query_pe_snapshot(window_years: int = WINDOW_YEARS) -> dict[str, dict]:
         current_pe = float(pe_series.iloc[-1])
         percentile = float((pe_series <= current_pe).mean() * 100)
 
+        start_1y = end - pd.DateOffset(years=1)
+        window_1y = history[history["日期"] >= start_1y]
+        pe_1y = window_1y["滚动市盈率"]
+        percentile_1y = (
+            float((pe_1y <= current_pe).mean() * 100) if not pe_1y.empty else None
+        )
+
         result[symbol] = {
             "index_code": code,
             "date": str(current["日期"]),
             "pe_ttm": round(current_pe, 2),
             "pe_percentile": round(percentile, 2),
+            "pe_percentile_1y": round(percentile_1y, 2)
+            if percentile_1y is not None
+            else None,
             "window": f"近{window_years}年滚动PE分位",
+            "window_1y": "近1年滚动PE分位（启动仓）",
             "window_start": str(window["日期"].iloc[0].date()),
             "window_end": str(window["日期"].iloc[-1].date()),
             "csindex_pe_1": _to_float(current.get("市盈率1")),
             "csindex_pe_2": _to_float(current.get("市盈率2")),
             "history_start": str(history["日期"].iloc[0].date()),
             "history_count": int(len(pe_series)),
+            "history_count_1y": int(len(pe_1y)),
             "source": "AKShare CSIndex + Legu（近10年滚动市盈率分位）",
         }
     return result

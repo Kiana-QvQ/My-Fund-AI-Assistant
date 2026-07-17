@@ -20,7 +20,7 @@ SCRIPTS = Path(__file__).resolve().parent
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-from policy_rules import classify_index, decision_label  # noqa: E402
+from policy_rules import decision_label, load_policy, resolve_action  # noqa: E402
 
 HOLDINGS_PATH = ROOT / "config" / "portfolio_holdings.json"
 SNAPSHOT_PATH = ROOT / "data" / "market_snapshot.json"
@@ -28,6 +28,13 @@ STATUS_PATH = ROOT / "data" / "portfolio_status.json"
 README_PATH = ROOT / "README.md"
 START = "<!-- PORTFOLIO_STATUS_START -->"
 END = "<!-- PORTFOLIO_STATUS_END -->"
+
+INDEX_WEIGHT = {
+    "沪深300": ("460300", 0.27),
+    "中证500": ("160119", 0.11),
+    "标普500": ("050025", 0.08),
+    "纳斯达克100": ("016452", 0.03),
+}
 
 
 def write_utf8_lf(path: Path, content: str) -> None:
@@ -54,10 +61,12 @@ def format_update_time(when: datetime) -> str:
     return local.strftime("%Y-%m-%d %H:%M:%S CST")
 
 
-def summarize_equity(indexes: dict) -> tuple[str, list[str]]:
+def summarize_equity(indexes: dict, holdings_cost: dict[str, float], principal: float) -> tuple[str, list[str]]:
     """Return overall equity tone and short per-index notes."""
     names = ("沪深300", "中证500", "标普500", "纳斯达克100")
+    policy = load_policy()
     buyable: list[str] = []
+    bootstrap: list[str] = []
     take_profit: list[str] = []
     blocked: list[str] = []
     paused: list[str] = []
@@ -65,22 +74,32 @@ def summarize_equity(indexes: dict) -> tuple[str, list[str]]:
     notes: list[str] = []
     for name in names:
         item = indexes.get(name, {})
-        action, reason = classify_index(
+        code, weight = INDEX_WEIGHT[name]
+        action, reason = resolve_action(
             name,
             item.get("pe_percentile"),
+            percentile_1y=item.get("pe_percentile_1y"),
             premium=item.get("qdii_premium"),
+            policy=policy,
             verified=item.get("verified"),
             tradeable=item.get("tradeable"),
+            held_cost=float(holdings_cost.get(code, 0) or 0),
+            target_amount=principal * weight,
         )
         label = decision_label(action)
         premium_pct = item.get("qdii_premium_pct")
+        pct_1y = item.get("pe_percentile_1y")
         suffix = (
             f"，溢价{premium_pct:.2f}%"
             if isinstance(premium_pct, (int, float))
             else ""
         )
+        if isinstance(pct_1y, (int, float)):
+            suffix += f"，1年分位{pct_1y:.1f}%"
         notes.append(f"{name}：{label}{suffix}")
-        if action in ("buy", "double"):
+        if action == "bootstrap":
+            bootstrap.append(name)
+        elif action in ("buy", "double"):
             buyable.append(name)
         elif action == "take_profit":
             take_profit.append(name)
@@ -90,8 +109,8 @@ def summarize_equity(indexes: dict) -> tuple[str, list[str]]:
             missing.append(name)
         else:
             paused.append(name)
-    if buyable:
-        tone = "🟢 权益有可买信号"
+    if buyable or bootstrap:
+        tone = "🟢 权益有可买/启动仓信号"
     elif take_profit:
         tone = "🟠 权益进入止盈观察"
     elif blocked:
@@ -208,7 +227,14 @@ def build_status() -> dict:
                 }
             )
 
-    equity_tone, equity_notes = summarize_equity(indexes)
+    equity_tone, equity_notes = summarize_equity(
+        indexes,
+        {
+            item["fund_code"]: float(item.get("cost_basis") or 0)
+            for item in holdings
+        },
+        building_principal,
+    )
     short_row = next(
         (row for row in rows if row["fund_code"] == "012773"),
         None,
@@ -253,6 +279,10 @@ def build_status() -> dict:
         "equity_notes": equity_notes,
         "rows": rows,
         "indexes": indexes,
+        "holdings_cost": {
+            item["fund_code"]: float(item.get("cost_basis") or 0)
+            for item in holdings
+        },
         "data_status": data_status,
     }
     return status
@@ -267,7 +297,7 @@ def render(status: dict) -> str:
         f"已投入：**{money(status['total_cost_basis'])}** · "
         f"整体建仓进度：**{status['building_progress_percent']:.2f}%**",
         f"> {status['overall_decision']}",
-        "> 状态灯：🟢 可买/可建仓 · 🟠 止盈观察 · 🟡 观望/暂停/溢价暂缓 · ⚪ 等待数据",
+        "> 状态灯：🟢 可买/启动仓/可建仓 · 🟠 止盈观察 · 🟡 观望/暂停/溢价暂缓 · ⚪ 等待数据",
         "> 说明：当前投入占比 = 单项已投入金额 ÷ 1万元建仓本金；目标金额 = 建仓本金 × 目标仓位。",
         "",
         "| 基金 | 代码 | 已投入 | 目标仓位 | 目标金额 | 当前投入占比 | 还差目标金额 | 今日状态 |",
@@ -301,8 +331,8 @@ def render(status: dict) -> str:
             "",
             "> PE 数据用于判断指数贵不贵；场外基金按当日净值成交，数据日期以指数实际更新日为准。",
             "",
-            "| 标的 | 场内代码 | 场外基金 | PE-TTM | 历史分位 | QDII溢价 | 数据日期 | 今日判断 |",
-            "|---|---:|---:|---:|---:|---:|---|---|",
+            "| 标的 | 场内代码 | 场外基金 | PE-TTM | 10年分位 | 1年分位 | QDII溢价 | 数据日期 | 今日判断 |",
+            "|---|---:|---:|---:|---:|---:|---:|---|---|",
         ]
     )
     index_rows = (
@@ -311,10 +341,14 @@ def render(status: dict) -> str:
         ("标普500", "513500", "050025"),
         ("纳斯达克100", "159941", "016452"),
     )
+    policy = load_policy()
+    holdings_cost = status.get("holdings_cost") or {}
+    principal = float(status.get("building_principal") or 10000)
     for name, market_code, fund_code in index_rows:
         index = status["indexes"].get(name, {})
         pe = index.get("pe_ttm")
         percentile = index.get("pe_percentile")
+        percentile_1y = index.get("pe_percentile_1y")
         data_date = index.get("date", "待核验")
         premium_pct = index.get("qdii_premium_pct")
         if name in ("沪深300", "中证500"):
@@ -323,16 +357,27 @@ def render(status: dict) -> str:
             premium_text = f"{premium_pct:.2f}%"
         else:
             premium_text = "待核验"
-        action, reason = classify_index(
+        code, weight = INDEX_WEIGHT[name]
+        held = float(holdings_cost.get(code, 0) or 0)
+        action, reason = resolve_action(
             name,
             percentile,
+            percentile_1y=percentile_1y,
             premium=index.get("qdii_premium"),
+            policy=policy,
             verified=index.get("verified"),
             tradeable=index.get("tradeable"),
+            held_cost=held,
+            target_amount=principal * weight,
         )
         pe_text = f"{pe:.2f}" if isinstance(pe, (int, float)) else "待核验"
         percentile_text = (
             f"{percentile:.2f}%" if isinstance(percentile, (int, float)) else "待核验"
+        )
+        percentile_1y_text = (
+            f"{percentile_1y:.2f}%"
+            if isinstance(percentile_1y, (int, float))
+            else "待核验"
         )
         decision = decision_label(action)
         if action == "unknown":
@@ -344,14 +389,16 @@ def render(status: dict) -> str:
                 decision = "数据不足，暂停自动买入"
         lines.append(
             f"| {name} | `{market_code}` | `{fund_code}` | {pe_text} | "
-            f"{percentile_text} | {premium_text} | {data_date} | {decision} |"
+            f"{percentile_text} | {percentile_1y_text} | {premium_text} | "
+            f"{data_date} | {decision} |"
         )
     lines.extend(
         [
             "",
-            "> A股分位为近10年滚动PE；标普500 用 Multpl 指数PE（最新值+月度历史）本地算近10年分位，"
-            "四层校验通过才可交易判断；纳指硬编码未核验、永不自动买入。"
-            "爬虫失败严禁用过期缓存做买卖。QDII溢价按场内ETF相对IOPV计算，＞2%暂缓买入。",
+            "> A股近10年分位为主策略；近1年分位用于启动仓（≤30%且未满目标仓15%可先建小仓）。"
+            "标普用 Multpl 指数PE，四层校验通过才可交易判断；纳指硬编码未核验、永不自动买入。"
+            "爬虫失败严禁用过期缓存做买卖。QDII溢价＞2%暂缓买入。"
+            "1万元本金启动仓上限约：沪深300 405 / 中证500 165 / 标普500 120 元。",
         ]
     )
     lines.extend(

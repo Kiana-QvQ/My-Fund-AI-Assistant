@@ -63,13 +63,16 @@
       "date": "2026-07-16",
       "pe_ttm": 13.56,
       "pe_percentile": 80.06,
+      "pe_percentile_1y": 72.43,
       "window": "近10年滚动PE分位",
+      "window_1y": "近1年滚动PE分位（启动仓）",
       "window_start": "2016-07-18",
       "window_end": "2026-07-16",
       "csindex_pe_1": 14.67,
       "csindex_pe_2": 17.41,
       "history_start": "2005-04-08",
       "history_count": 2427,
+      "history_count_1y": 243,
       "source": "AKShare CSIndex + Legu（近10年滚动市盈率分位）"
     },
     "中证500": {
@@ -77,40 +80,47 @@
       "date": "2026-07-16",
       "pe_ttm": 30.18,
       "pe_percentile": 85.78,
+      "pe_percentile_1y": 85.6,
       "window": "近10年滚动PE分位",
+      "window_1y": "近1年滚动PE分位（启动仓）",
       "window_start": "2016-07-18",
       "window_end": "2026-07-16",
       "csindex_pe_1": 29.41,
       "csindex_pe_2": 31.73,
       "history_start": "2007-01-15",
       "history_count": 2427,
+      "history_count_1y": 243,
       "source": "AKShare CSIndex + Legu（近10年滚动市盈率分位）"
     },
     "标普500": {
       "pe_ttm": 32.41,
       "pe_percentile": 93.33,
+      "pe_percentile_1y": 100.0,
       "verified": true,
       "tradeable": true,
       "status": "verified",
       "date": "2026-07-16",
       "window": "近10年 Multpl 月度PE分位",
+      "window_1y": "近1年 Multpl 月度PE分位（启动仓）",
       "source": "https://www.multpl.com/s-p-500-pe-ratio",
       "history_source": "https://www.multpl.com/s-p-500-pe-ratio/table/by-month",
       "history_points": 120,
+      "history_points_1y": 12,
       "history_from_cache": true,
       "current_timestamp": "4:00 PM EDT, Thu Jul 16",
-      "fetched_at": "2026-07-17T10:45:34+08:00",
-      "reason": "Multpl 指数PE=32.41，近10年分位 93.33% （样本 120）（月度序列来自缓存）",
+      "fetched_at": "2026-07-17T11:19:21+08:00",
+      "reason": "Multpl 指数PE=32.41，近10年分位 93.33% （样本 120），近1年分位 100.00%（月度序列来自缓存）",
       "validation_errors": [],
-      "qdii_premium": 0.049,
-      "qdii_premium_pct": 4.9,
+      "qdii_premium": 0.0482,
+      "qdii_premium_pct": 4.82,
       "qdii_etf": "513500",
       "qdii_premium_status": "ok",
-      "qdii_premium_reason": "场内513500 溢价 4.90%"
+      "qdii_premium_reason": "场内513500 溢价 4.82%"
     },
     "纳斯达克100": {
       "pe_ttm": null,
       "pe_percentile": null,
+      "pe_percentile_1y": null,
       "verified": false,
       "status": "unverified",
       "tradeable": false,
@@ -121,33 +131,33 @@
       "validation_errors": [
         "纳斯达克100硬编码为未核验"
       ],
-      "qdii_premium": 0.0651,
-      "qdii_premium_pct": 6.51,
+      "qdii_premium": 0.0671,
+      "qdii_premium_pct": 6.71,
       "qdii_etf": "159941",
       "qdii_premium_status": "ok",
-      "qdii_premium_reason": "场内159941 溢价 6.51%"
+      "qdii_premium_reason": "场内159941 溢价 6.71%"
     }
   },
   "qdii_premiums": {
     "标普500": {
       "etf_code": "513500",
-      "price": 2.539,
+      "price": 2.537,
       "iopv": 2.4203,
-      "premium": 0.049,
-      "premium_pct": 4.9,
+      "premium": 0.0482,
+      "premium_pct": 4.82,
       "status": "ok",
-      "as_of": "2026-07-17T10:45:53+08:00",
-      "reason": "场内513500 溢价 4.90%"
+      "as_of": "2026-07-17T11:19:42+08:00",
+      "reason": "场内513500 溢价 4.82%"
     },
     "纳斯达克100": {
       "etf_code": "159941",
-      "price": 1.569,
+      "price": 1.572,
       "iopv": 1.4731,
-      "premium": 0.0651,
-      "premium_pct": 6.51,
+      "premium": 0.0671,
+      "premium_pct": 6.71,
       "status": "ok",
-      "as_of": "2026-07-17T10:45:53+08:00",
-      "reason": "场内159941 溢价 6.51%"
+      "as_of": "2026-07-17T11:19:42+08:00",
+      "reason": "场内159941 溢价 6.71%"
     }
   },
   "us_meta": {
@@ -166,7 +176,7 @@
         "target_percent": 51.0,
         "action": "buy",
         "planned_amount": 2000.0,
-        "reason": "稳健底仓；当前申购状态允许小额建仓；权益暂停/止盈观察资金转入短债底仓"
+        "reason": "稳健底仓；当前申购状态允许小额建仓；权益暂停/止盈观察/启动仓结余资金转入短债底仓"
       },
       {
         "fund_code": "460300",
@@ -202,6 +212,7 @@
       }
     ],
     "take_profit_notes": [],
+    "bootstrap_notes": [],
     "deferred_amount": 0.0,
     "guardrail": "建议仅作研究计划，所有交易须人工核对申购状态和金额后执行"
   }

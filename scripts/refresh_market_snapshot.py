@@ -20,7 +20,11 @@ if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 from a_share_pe import query_pe_snapshot  # noqa: E402
-from policy_rules import classify_index, load_policy  # noqa: E402
+from policy_rules import (  # noqa: E402
+    bootstrap_remaining,
+    load_policy,
+    resolve_action,
+)
 from qdii_premium import fetch_qdii_premiums  # noqa: E402
 from us_pe import refresh_us_pe  # noqa: E402
 
@@ -149,6 +153,7 @@ def index_snapshot() -> tuple[dict[str, dict], dict[str, dict], dict]:
                 "标普500": {
                     "pe_ttm": None,
                     "pe_percentile": None,
+                    "pe_percentile_1y": None,
                     "verified": False,
                     "tradeable": False,
                     "status": "fetch_failed",
@@ -159,6 +164,7 @@ def index_snapshot() -> tuple[dict[str, dict], dict[str, dict], dict]:
                 "纳斯达克100": {
                     "pe_ttm": None,
                     "pe_percentile": None,
+                    "pe_percentile_1y": None,
                     "verified": False,
                     "tradeable": False,
                     "status": "unverified",
@@ -210,6 +216,8 @@ def action_for(
     indexes: dict,
     holdings_cost: dict[str, float],
     policy: dict,
+    *,
+    principal: float,
 ) -> tuple[str, str]:
     if item["asset"] == "short_bond":
         status = fund["purchase_status"]
@@ -222,39 +230,48 @@ def action_for(
     else:
         index_name = item["index"]["name"]
     index = indexes.get(index_name, {})
+    held = float(holdings_cost.get(item["fund_code"], 0) or 0)
+    target_amount = float(principal) * float(item["target"])
 
     if fund["purchase_status"] == "暂停申购":
-        signal, reason = classify_index(
+        signal, reason = resolve_action(
             index_name,
             index.get("pe_percentile"),
+            percentile_1y=index.get("pe_percentile_1y"),
             premium=index.get("qdii_premium"),
             policy=policy,
             verified=index.get("verified"),
             tradeable=index.get("tradeable"),
+            held_cost=held,
+            target_amount=target_amount,
         )
-        if signal == "take_profit" and holdings_cost.get(item["fund_code"], 0) > 0:
+        if signal == "take_profit" and held > 0:
             return "take_profit", f"{reason}；基金暂停申购不影响止盈观察"
+        if signal == "bootstrap":
+            return "wait", f"基金当前暂停申购；{reason}"
         return "wait", f"基金当前暂停申购；{reason}"
 
     if fund["purchase_status"] not in ("开放申购", "限大额"):
         return "wait", f"申购状态为 {fund['purchase_status']}"
 
-    signal, reason = classify_index(
+    signal, reason = resolve_action(
         index_name,
         index.get("pe_percentile"),
+        percentile_1y=index.get("pe_percentile_1y"),
         premium=index.get("qdii_premium"),
         policy=policy,
         verified=index.get("verified"),
         tradeable=index.get("tradeable"),
+        held_cost=held,
+        target_amount=target_amount,
     )
     if signal == "take_profit":
-        held = holdings_cost.get(item["fund_code"], 0.0)
         if held <= 0:
             return "wait", f"{reason}；账本暂无该基金持仓，仅观察"
         low = round(held / 3, 2)
         high = round(held / 2, 2)
         return "take_profit", f"{reason}；建议赎回约 {low:.2f}~{high:.2f} 元"
-    if signal in ("buy", "double"):
+    if signal in ("buy", "double", "bootstrap"):
         return signal, reason
     return "wait", reason
 
@@ -271,13 +288,18 @@ def build_plan(
     held_back = 0.0
     double_extra = 0.0
     take_profit_notes: list[str] = []
+    bootstrap_notes: list[str] = []
     short_bond = next(item for item in funds if item["asset"] == "short_bond")
 
     for item in funds:
         fund = item["fund"]
         base = first_month * item["target"]
-        action, reason = action_for(item, fund, indexes, holdings_cost, policy)
+        action, reason = action_for(
+            item, fund, indexes, holdings_cost, policy, principal=principal
+        )
         planned = base
+        held = float(holdings_cost.get(item["fund_code"], 0) or 0)
+        target_amount = float(principal) * float(item["target"])
         if action in ("wait", "take_profit", "premium_block", "unknown"):
             held_back += base
             if action == "take_profit":
@@ -287,6 +309,21 @@ def build_plan(
             planned = base * 2
             double_extra += base
             reason = f"{reason}；加倍部分从短债底仓调拨"
+        elif action == "bootstrap":
+            remaining = bootstrap_remaining(held, target_amount, policy)
+            planned = round(min(base, remaining), 2)
+            if planned <= 0:
+                held_back += base
+                planned = 0.0
+                action = "wait"
+                reason = f"{reason}；启动仓额度已用尽"
+            else:
+                bootstrap_notes.append(
+                    f"{item['name']} 启动仓约 {planned:.2f} 元（上限剩余 {remaining:.2f}）"
+                )
+                # unused first-month slice beyond starter returns to short bond
+                if base > planned:
+                    held_back += base - planned
         allocations.append(
             {
                 "fund_code": item["fund_code"],
@@ -306,7 +343,7 @@ def build_plan(
         short_plan["planned_amount"] = round(max(adjusted, 0.0), 2)
         notes = []
         if held_back:
-            notes.append("权益暂停/止盈观察资金转入短债底仓")
+            notes.append("权益暂停/止盈观察/启动仓结余资金转入短债底仓")
         if double_extra:
             notes.append(f"已为低估加倍调出 {double_extra:.2f} 元")
         if notes:
@@ -318,6 +355,7 @@ def build_plan(
         "first_month_budget": round(first_month, 2),
         "allocations": allocations,
         "take_profit_notes": take_profit_notes,
+        "bootstrap_notes": bootstrap_notes,
         "deferred_amount": round(
             first_month - sum(row["planned_amount"] for row in allocations), 2
         ),

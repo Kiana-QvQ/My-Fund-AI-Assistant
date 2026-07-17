@@ -261,8 +261,8 @@ def _percentile(series: list[float], current: float) -> float:
     return sum(1 for item in series if item <= current) / len(series) * 100
 
 
-def _window_values(points: list[dict], as_of: date) -> list[float]:
-    cutoff = (as_of - timedelta(days=365 * WINDOW_YEARS)).isoformat()
+def _window_values(points: list[dict], as_of: date, *, years: float = WINDOW_YEARS) -> list[float]:
+    cutoff = (as_of - timedelta(days=int(365 * years))).isoformat()
     return [
         float(item["pe_ttm"])
         for item in points
@@ -306,6 +306,7 @@ def _nasdaq_unverified_item() -> dict:
     return {
         "pe_ttm": None,
         "pe_percentile": None,
+        "pe_percentile_1y": None,
         "verified": False,
         "status": "unverified",
         "tradeable": False,
@@ -334,25 +335,38 @@ def refresh_us_pe(*, persist: bool = True, force_monthly_refresh: bool = False) 
                 f"近10年样本不足（{len(window_values)} < {MIN_HISTORY_POINTS}）"
             )
         percentile = round(_percentile(window_values, pe), 2)
+        window_1y = _window_values(series_doc["points"], _today(), years=1)
+        percentile_1y = (
+            round(_percentile(window_1y, pe), 2) if len(window_1y) >= 6 else None
+        )
         ok, errors = validate_spx(pe, percentile, valuation_date)
         cache_note = "（月度序列来自缓存）" if series_doc.get("from_cache") else ""
         item = {
             "pe_ttm": pe,
             "pe_percentile": percentile,
+            "pe_percentile_1y": percentile_1y,
             "verified": ok,
             "tradeable": ok,
             "status": "verified" if ok else "validation_failed",
             "date": current["date"],
             "window": f"近{WINDOW_YEARS}年 Multpl 月度PE分位",
+            "window_1y": "近1年 Multpl 月度PE分位（启动仓）",
             "source": MULTPL_HOME_URL,
             "history_source": series_doc.get("source", MULTPL_MONTHLY_URL),
             "history_points": len(window_values),
+            "history_points_1y": len(window_1y),
             "history_from_cache": bool(series_doc.get("from_cache")),
             "current_timestamp": current.get("timestamp_raw"),
             "fetched_at": datetime.now(CST).isoformat(timespec="seconds"),
             "reason": (
                 f"Multpl 指数PE={pe:.2f}，近10年分位 {percentile:.2f}% "
-                f"（样本 {len(window_values)}）{cache_note}"
+                f"（样本 {len(window_values)}）"
+                + (
+                    f"，近1年分位 {percentile_1y:.2f}%"
+                    if percentile_1y is not None
+                    else ""
+                )
+                + cache_note
                 if ok
                 else "；".join(errors)
             ),
@@ -369,6 +383,7 @@ def refresh_us_pe(*, persist: bool = True, force_monthly_refresh: bool = False) 
         indexes["标普500"] = {
             "pe_ttm": None,
             "pe_percentile": None,
+            "pe_percentile_1y": None,
             "verified": False,
             "tradeable": False,
             "status": "fetch_failed",

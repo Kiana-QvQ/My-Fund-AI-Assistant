@@ -22,10 +22,19 @@
     "qdii_premium_pause_above": 0.02,
     "qdii_premium_resume_below": 0.01
   },
+  "bootstrap": {
+    "enabled": true,
+    "window_years": 1,
+    "percentile_at_or_below": 30,
+    "max_fraction_of_target": 0.15,
+    "min_amount": 10,
+    "indexes": ["沪深300", "中证500", "标普500"],
+    "exclude": ["纳斯达克100"],
+    "note": "权益尚无启动仓时：近1年PE分位≤30%可先建不超过目标仓15%的启动仓；之后仍按近10年分位主策略加仓。按1万元本金：沪深300≤405、中证500≤165、标普500≤120。"
+  },
   "guardrails": {
     "paper_or_advice_only": true,
     "automatic_order_placement": false,
     "require_human_confirmation": true
   }
 }
-

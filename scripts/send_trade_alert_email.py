@@ -25,7 +25,13 @@ SCRIPTS = Path(__file__).resolve().parent
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-from policy_rules import classify_index, decision_label, load_policy, rules  # noqa: E402
+from policy_rules import (  # noqa: E402
+    bootstrap_remaining,
+    decision_label,
+    load_policy,
+    resolve_action,
+    rules,
+)
 
 SNAPSHOT_PATH = ROOT / "data" / "market_snapshot.json"
 HOLDINGS_PATH = ROOT / "config" / "portfolio_holdings.json"
@@ -74,13 +80,29 @@ def holdings_cost() -> dict[str, float]:
     }
 
 
+def building_principal() -> float:
+    if not HOLDINGS_PATH.is_file():
+        return 10000.0
+    doc = json.loads(HOLDINGS_PATH.read_text(encoding="utf-8"))
+    return float(doc.get("building_principal") or 10000.0)
+
+
 def collect_signals(snapshot: dict, monthly: float, policy: dict) -> dict:
     indexes = snapshot.get("indexes", {})
     us_meta = snapshot.get("us_meta", {})
     held = holdings_cost()
+    principal = building_principal()
     r = rules(policy)
     a_buy = float(r.get("a_share_normal_percentile_below", 40))
     us_buy = float(r.get("us_normal_percentile_below", 50))
+    boot_cfg = policy.get("bootstrap") or {}
+    boot_line = (
+        f"近1年分位≤{float(boot_cfg.get('percentile_at_or_below', 30)):.0f}% "
+        f"且未满目标仓{float(boot_cfg.get('max_fraction_of_target', 0.15)) * 100:.0f}% "
+        f"时可建启动仓"
+        if boot_cfg.get("enabled")
+        else "启动仓未启用"
+    )
 
     rows: list[str] = []
     buy_a: list[str] = []
@@ -90,24 +112,42 @@ def collect_signals(snapshot: dict, monthly: float, policy: dict) -> dict:
     alert_lines: list[str] = list(us_meta.get("alerts") or [])
     paused_amount = 0.0
     spx_failed = False
+    has_bootstrap = False
 
     for name in (*A_SHARE, *US):
         item = indexes.get(name, {})
         pe = item.get("pe_ttm")
         pct = item.get("pe_percentile")
+        pct_1y = item.get("pe_percentile_1y")
         premium = item.get("qdii_premium")
-        action, reason = classify_index(
+        code, fund_name, weight = FUND_BY_INDEX[name]
+        target_amount = principal * weight
+        held_cost = float(held.get(code, 0) or 0)
+        action, reason = resolve_action(
             name,
             pct,
+            percentile_1y=pct_1y,
             premium=premium,
             policy=policy,
             verified=item.get("verified"),
             tradeable=item.get("tradeable"),
+            held_cost=held_cost,
+            target_amount=target_amount,
         )
-        code, fund_name, weight = FUND_BY_INDEX[name]
-        amount = round(monthly * weight, 2)
+        month_slice = round(monthly * weight, 2)
+        if action == "bootstrap":
+            amount = round(
+                min(month_slice, bootstrap_remaining(held_cost, target_amount, policy)),
+                2,
+            )
+            has_bootstrap = True
+        elif action == "double":
+            amount = round(month_slice * 2, 2)
+        else:
+            amount = month_slice
         pe_text = f"{pe:.2f}" if isinstance(pe, (int, float)) else "-"
         pct_text = f"{pct:.2f}%" if isinstance(pct, (int, float)) else "-"
+        pct_1y_text = f"{pct_1y:.2f}%" if isinstance(pct_1y, (int, float)) else "-"
         premium_text = (
             f"{item.get('qdii_premium_pct'):.2f}%"
             if isinstance(item.get("qdii_premium_pct"), (int, float))
@@ -116,8 +156,9 @@ def collect_signals(snapshot: dict, monthly: float, policy: dict) -> dict:
         label = decision_label(action)
         verified_flag = item.get("verified")
         rows.append(
-            f"- {name}｜PE {pe_text}｜分位 {pct_text}｜溢价 {premium_text}｜"
-            f"核验={'是' if verified_flag is True else '否'}｜{label}｜{reason}"
+            f"- {name}｜PE {pe_text}｜10年分位 {pct_text}｜1年分位 {pct_1y_text}｜"
+            f"溢价 {premium_text}｜核验={'是' if verified_flag is True else '否'}｜"
+            f"{label}｜{reason}"
         )
         if name == "标普500" and verified_flag is not True:
             spx_failed = True
@@ -125,22 +166,22 @@ def collect_signals(snapshot: dict, monthly: float, policy: dict) -> dict:
                 if err not in alert_lines:
                     alert_lines.append(str(err))
 
-        if action in ("buy", "double"):
-            # US buy only possible when classify_index already verified.
+        if action in ("buy", "double", "bootstrap"):
             buy_lines.append(f"  · {fund_name}（{code}）约 {amount:.2f} 元（{label}）")
             if name in A_SHARE:
                 buy_a.append(name)
             else:
                 buy_us.append(name)
-        elif action == "take_profit" and held.get(code, 0) > 0:
-            cost = held[code]
+            if action == "bootstrap" and month_slice > amount:
+                paused_amount += month_slice - amount
+        elif action == "take_profit" and held_cost > 0:
             take_profit_lines.append(
                 f"  · {fund_name}（{code}）建议赎回约 "
-                f"{cost / 3:.2f}~{cost / 2:.2f} 元（当前账本 {cost:.2f}）"
+                f"{held_cost / 3:.2f}~{held_cost / 2:.2f} 元（当前账本 {held_cost:.2f}）"
             )
-            paused_amount += amount
+            paused_amount += month_slice
         else:
-            paused_amount += amount
+            paused_amount += month_slice
 
     short_code, short_name, short_w = SHORT_BOND
     short_base = round(monthly * short_w, 2)
@@ -158,10 +199,13 @@ def collect_signals(snapshot: dict, monthly: float, policy: dict) -> dict:
         "short_base": short_base,
         "short_total": round(short_base + paused_amount, 2),
         "has_buy": bool(buy_a or buy_us),
+        "has_bootstrap": has_bootstrap,
         "has_take_profit": bool(take_profit_lines),
         "has_us_alert": spx_failed or bool(alert_lines),
         "a_buy": a_buy,
         "us_buy": us_buy,
+        "boot_line": boot_line,
+        "principal": principal,
     }
 
 
@@ -207,7 +251,7 @@ def build_body(
         title = f"【定投行动提醒】{as_of} 今日招行操作清单"
         parts = []
         if data["has_buy"]:
-            parts.append("买入")
+            parts.append("启动仓/买入" if data.get("has_bootstrap") else "买入")
         if data["has_take_profit"]:
             parts.append("止盈")
         why = "今日存在需要人工确认的行动：" + "、".join(parts) + "。"
@@ -244,16 +288,18 @@ def build_body(
 
 生成时间：{now}
 数据日期：{as_of}
+建仓本金：{data.get('principal', 10000):.0f} 元
 月定投预算：{monthly:.0f} 元
 
 【为何发这封邮件】
 {why}
 
 【策略时点】
-1）A股：分位＜{a_buy:.0f}% 可买；≤30% 加倍；≥60% 分批止盈
-2）标普500：仅 Multpl 指数PE核验通过后，分位＜{us_buy:.0f}% 可买；≥70% 止盈
-3）纳斯达克100：估值未核验，永不自动买入
-4）QDII 场内溢价＞2% 暂缓买入
+1）A股近10年分位＜{a_buy:.0f}% 可买；≤30% 加倍；≥60% 分批止盈
+2）标普500：Multpl核验通过后，近10年分位＜{us_buy:.0f}% 可买；≥70% 止盈
+3）启动仓例外：{data.get('boot_line', '')}（纳指除外）
+4）纳斯达克100：估值未核验，永不自动买入
+5）QDII 场内溢价＞2% 暂缓买入
 
 【今日结论】
 A股可买：{a_text}
