@@ -1,7 +1,7 @@
 {
   "as_of": "2026-07-17",
-  "generated_at": "2026-07-17T11:47:55+08:00",
-  "updated_at_display": "2026-07-17 11:47:55 CST",
+  "generated_at": "2026-07-17T11:48:30+08:00",
+  "updated_at_display": "2026-07-17 11:48:30 CST",
   "total_cost_basis": 2000.0,
   "building_principal": 10000.0,
   "initial_build_percent": 20.0,
@@ -122,5 +122,5 @@
   "holdings_cost": {
     "012773": 2000.0
   },
-  "data_status": "market_snapshot.json 已加载；标普PE已核验（Multpl，2026-07-16）；纳指参考PE 32.54（yfinance QQQ，不交易）"
+  "data_status": "market_snapshot.json 已加载；标普PE已核验（Multpl，2026-07-16）；纳指参考PE 32.54（QQQ，不交易）"
 }

@@ -264,7 +264,7 @@ def build_status() -> dict:
     elif spx:
         data_status += "；标普PE未核验/校验失败（禁止自动买入）"
     if ndx.get("reference_only") and isinstance(ndx.get("pe_ttm"), (int, float)):
-        data_status += f"；纳指参考PE {ndx['pe_ttm']:.2f}（yfinance QQQ，不交易）"
+        data_status += f"；纳指参考PE {ndx['pe_ttm']:.2f}（QQQ，不交易）"
     elif ndx.get("verified") is not True:
         data_status += "；纳指估值未核验/仅参考"
 
