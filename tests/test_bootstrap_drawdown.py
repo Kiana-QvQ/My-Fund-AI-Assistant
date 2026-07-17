@@ -1,9 +1,10 @@
-"""Tests for relaxed 10y DCA tiers and 1y build 100/50/25%."""
+"""Tests for independent DCA multipliers and build tiers."""
 
 from __future__ import annotations
 
 import sys
 import unittest
+from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -11,188 +12,279 @@ SCRIPTS = ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-from index_drawdown import attach_drawdowns, compute_drawdown_from_closes  # noqa: E402
-from policy_rules import load_policy, resolve_action, try_bootstrap_action  # noqa: E402
+from investment_plan import (  # noqa: E402
+    allocate_dca_plan,
+    portfolio_monthly_base,
+    portfolio_monthly_cap,
+    remaining_thursdays,
+    resolve_build_line,
+    resolve_dca_line,
+    thursdays_in_month,
+)
+from policy_rules import load_policy, resolve_action  # noqa: E402
 
 
-class DrawdownMathTests(unittest.TestCase):
-    def test_compute_drawdown_from_closes(self) -> None:
-        closes = [80.0] * 100 + [100.0] + [90.0] * 50 + [85.0]
-        metrics = compute_drawdown_from_closes(closes)
-        self.assertAlmostEqual(metrics["drawdown_from_52w_high"], 0.15, places=4)
-
-
-class DcaAndBuildTierTests(unittest.TestCase):
+class DcaMultiplierTests(unittest.TestCase):
     def setUp(self) -> None:
         self.policy = load_policy()
 
-    def test_scheme_c_10y_tiers(self) -> None:
+    def test_dca_tiers_a_and_us_ladder(self) -> None:
         cases = [
-            (39.0, "triple"),
-            (45.0, "double"),
-            (55.0, "sesqui"),
-            (65.0, "buy"),
-            (75.0, "light"),
-            (85.0, "half"),
-            (90.0, "overvalued_watch"),
+            (39.9, 3.0),
+            (40.0, 2.0),
+            (49.9, 2.0),
+            (50.0, 1.5),
+            (59.9, 1.5),
+            (60.0, 1.0),
+            (69.9, 1.0),
+            (70.0, 0.7),
+            (79.9, 0.7),
+            (80.0, 0.5),
+            (89.9, 0.5),
+            (90.0, 0.0),
         ]
-        for pct, expected in cases:
-            action, _ = resolve_action(
+        for pct, mult in cases:
+            line = resolve_dca_line(
                 "沪深300",
                 pct,
-                percentile_1y=95.0,
-                drawdown_from_52w_high=0.0,
+                drawdown_from_52w_high=0.10,
                 policy=self.policy,
-                held_cost=0.0,
-                target_amount=2700.0,
             )
-            self.assertEqual(action, expected, f"pct={pct}")
-
-    def test_current_levels_get_half_dca(self) -> None:
-        for name, pct10, pct1y, dd, target in (
-            ("沪深300", 80.06, 72.43, 0.0714, 2700.0),
-            ("中证500", 85.78, 85.6, 0.1191, 1100.0),
-        ):
-            action, reason = resolve_action(
-                name,
-                pct10,
-                percentile_1y=pct1y,
-                drawdown_from_52w_high=dd,
+            self.assertAlmostEqual(line["multiplier"], mult, places=3, msg=f"A:{pct}")
+            us = resolve_dca_line(
+                "标普500",
+                pct,
+                drawdown_from_52w_high=0.10,
+                premium=0.0,
+                verified=True,
+                tradeable=True,
                 policy=self.policy,
-                held_cost=0.0,
-                target_amount=target,
             )
-            self.assertEqual(action, "half", name)
-            self.assertIn("50%", reason)
+            self.assertAlmostEqual(us["multiplier"], mult, places=3, msg=f"US:{pct}")
 
-    def test_1y_build_100_tier(self) -> None:
+    def test_qdii_premium_none_fail_closed(self) -> None:
+        line = resolve_dca_line(
+            "标普500",
+            30.0,
+            premium=None,
+            drawdown_from_52w_high=0.10,
+            verified=True,
+            tradeable=True,
+            policy=self.policy,
+        )
+        self.assertTrue(line["paused"])
+        self.assertEqual(line["action"], "premium_block")
+
+    def test_portfolio_budget_keys(self) -> None:
+        self.assertEqual(portfolio_monthly_base(self.policy), 300.0)
+        self.assertEqual(portfolio_monthly_cap(self.policy), 1000.0)
+
+    def test_current_snapshot_levels_are_half_band(self) -> None:
+        line = resolve_dca_line(
+            "沪深300",
+            80.06,
+            drawdown_from_52w_high=0.07,
+            policy=self.policy,
+        )
+        self.assertAlmostEqual(line["multiplier"], 0.5)
+
+    def test_qdii_premium_pauses_us_dca(self) -> None:
+        line = resolve_dca_line(
+            "标普500",
+            40.0,
+            premium=0.03,
+            policy=self.policy,
+            verified=True,
+            tradeable=True,
+        )
+        self.assertTrue(line["paused"])
+        self.assertEqual(line["action"], "premium_block")
+
+    def test_missing_drawdown_blocks_boost(self) -> None:
+        line = resolve_dca_line("沪深300", 25.0, policy=self.policy)
+        self.assertAlmostEqual(line["multiplier"], 1.0)
+        self.assertIn("缺回撤数据", line["reason"])
+
+    def test_resolve_action_dca_only_no_build_merge(self) -> None:
         action, reason = resolve_action(
             "沪深300",
-            82.0,  # would be half on 10y
+            80.0,
+            percentile_1y=40.0,
+            drawdown_from_52w_high=0.10,
+            policy=self.policy,
+            held_cost=0.0,
+            target_amount=2700.0,
+        )
+        self.assertEqual(action, "half")
+        self.assertIn("40", reason)  # 300 * 0.27 * 0.5 = 40.5 → "40"
+
+    def test_near_high_stops_boost_above_base(self) -> None:
+        line = resolve_dca_line(
+            "沪深300",
+            25.0,
+            drawdown_from_52w_high=0.0,
+            policy=self.policy,
+        )
+        self.assertAlmostEqual(line["multiplier"], 1.0)
+        self.assertIn("停止加码", line["reason"])
+
+    def test_build_independent(self) -> None:
+        line = resolve_build_line(
+            "沪深300",
+            80.0,
             percentile_1y=45.0,
             drawdown_from_52w_high=0.06,
             policy=self.policy,
             held_cost=0.0,
             target_amount=2700.0,
         )
-        # 1y 100% > 10y 50% → upgrade to buy
-        self.assertEqual(action, "buy")
-        self.assertIn("1年建仓", reason)
+        self.assertTrue(line["active"])
+        self.assertAlmostEqual(line["fraction"], 1.0)
 
-    def test_1y_build_25_when_10y_stopped(self) -> None:
-        action, reason = resolve_action(
-            "沪深300",
-            92.0,
-            percentile_1y=80.0,
-            drawdown_from_52w_high=0.05,
-            policy=self.policy,
-            held_cost=0.0,
-            target_amount=2700.0,
+    def test_ndx_excluded(self) -> None:
+        line = resolve_dca_line("纳斯达克100", 10.0, policy=self.policy)
+        self.assertEqual(line["action"], "reference")
+
+
+class DcaAllocationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.policy = load_policy()
+
+    def test_five_sleeves_sum_at_half_band(self) -> None:
+        equity = [
+            resolve_dca_line("沪深300", 80.0, drawdown_from_52w_high=0.05, policy=self.policy),
+            resolve_dca_line("中证500", 80.0, drawdown_from_52w_high=0.05, policy=self.policy),
+            resolve_dca_line(
+                "标普500",
+                80.0,
+                drawdown_from_52w_high=0.05,
+                premium=0.0,
+                verified=True,
+                tradeable=True,
+                policy=self.policy,
+            ),
+            resolve_dca_line("纳斯达克100", 10.0, policy=self.policy),
+        ]
+        today = date(2026, 6, 4)
+        lines = allocate_dca_plan(equity, policy=self.policy, today=today, month_spent=0)
+        by_name = {ln["name"]: ln for ln in lines}
+        # 50% band: equity sleeves half; NDX→短债
+        self.assertEqual(by_name["沪深300"]["monthly"], 40.5)  # 81*0.5
+        self.assertEqual(by_name["中证500"]["monthly"], 16.5)
+        self.assertEqual(by_name["标普500"]["monthly"], 12.0)
+        self.assertEqual(by_name["纳斯达克100"]["monthly"], 0.0)
+        self.assertEqual(by_name["短债"]["monthly"], 162.0)  # 153+9
+        total = round(sum(ln["monthly"] for ln in lines), 2)
+        self.assertEqual(total, 231.0)
+
+    def test_triple_unlocks_portfolio_cap_1000(self) -> None:
+        equity = [
+            resolve_dca_line("沪深300", 25.0, drawdown_from_52w_high=0.10, policy=self.policy),
+            resolve_dca_line("中证500", 25.0, drawdown_from_52w_high=0.10, policy=self.policy),
+            resolve_dca_line(
+                "标普500",
+                30.0,
+                drawdown_from_52w_high=0.10,
+                premium=0.0,
+                verified=True,
+                tradeable=True,
+                policy=self.policy,
+            ),
+            resolve_dca_line("纳斯达克100", 10.0, policy=self.policy),
+        ]
+        lines = allocate_dca_plan(
+            equity, policy=self.policy, today=date(2026, 6, 4), month_spent=0
         )
-        self.assertEqual(action, "bootstrap")
-        self.assertIn("25%", reason)
+        total = round(sum(ln["monthly"] for ln in lines), 2)
+        self.assertEqual(total, 1000.0)
+        # Unscaled weight×3 would only be ~576; scaling must unlock cap
+        self.assertGreater(total, 576.0)
 
-    def test_drawdown_blocks_1y_upgrade_keeps_half(self) -> None:
-        action, reason = resolve_action(
-            "沪深300",
-            75.0,
-            percentile_1y=45.0,
-            drawdown_from_52w_high=0.02,  # too shallow for 100%/50% tiers
-            policy=self.policy,
-            held_cost=0.0,
-            target_amount=2700.0,
+    def test_half_band_does_not_inflate_to_base(self) -> None:
+        equity = [
+            resolve_dca_line("沪深300", 80.0, drawdown_from_52w_high=0.05, policy=self.policy),
+            resolve_dca_line("中证500", 80.0, drawdown_from_52w_high=0.05, policy=self.policy),
+            resolve_dca_line(
+                "标普500",
+                80.0,
+                drawdown_from_52w_high=0.05,
+                premium=0.0,
+                verified=True,
+                tradeable=True,
+                policy=self.policy,
+            ),
+            resolve_dca_line("纳斯达克100", 10.0, policy=self.policy),
+        ]
+        lines = allocate_dca_plan(
+            equity, policy=self.policy, today=date(2026, 6, 4), month_spent=0
         )
-        self.assertEqual(action, "light")
-        self.assertIn("70%", reason)
+        total = round(sum(ln["monthly"] for ln in lines), 2)
+        self.assertEqual(total, 231.0)
 
-    def test_main_10y_buy_unchanged_band(self) -> None:
-        action, _ = resolve_action(
-            "沪深300",
-            65.0,
-            percentile_1y=90.0,
-            drawdown_from_52w_high=0.0,
-            policy=self.policy,
-            held_cost=0.0,
-            target_amount=2700.0,
+        policy = load_policy()
+        policy = {
+            **policy,
+            "dca": {**policy["dca"], "monthly_base": 300, "monthly_cap": 200},
+        }
+        equity = [
+            resolve_dca_line("沪深300", 25.0, drawdown_from_52w_high=0.10, policy=policy),
+            resolve_dca_line("中证500", 25.0, drawdown_from_52w_high=0.10, policy=policy),
+            resolve_dca_line(
+                "标普500",
+                30.0,
+                drawdown_from_52w_high=0.10,
+                premium=0.0,
+                verified=True,
+                tradeable=True,
+                policy=policy,
+            ),
+            resolve_dca_line("纳斯达克100", 10.0, policy=policy),
+        ]
+        lines = allocate_dca_plan(
+            equity, policy=policy, today=date(2026, 6, 4), month_spent=0
         )
-        self.assertEqual(action, "buy")
+        total = round(sum(ln["monthly"] for ln in lines), 2)
+        self.assertLessEqual(total, 200.0)
+        by_name = {ln["name"]: ln for ln in lines}
+        # Priority fills HS300 first
+        self.assertGreater(by_name["沪深300"]["monthly"], by_name["短债"]["monthly"])
 
-    def test_us_half_extends_to_90(self) -> None:
-        action, reason = resolve_action(
-            "标普500",
-            85.0,
-            percentile_1y=90.0,
-            drawdown_from_52w_high=0.0,
-            policy=self.policy,
-            verified=True,
-            tradeable=True,
-            held_cost=0.0,
-            target_amount=800.0,
+    def test_five_thursday_month_respects_remaining(self) -> None:
+        self.assertEqual(len(thursdays_in_month(2026, 7)), 5)
+        today = date(2026, 7, 2)  # first Thursday
+        left = remaining_thursdays(today)
+        self.assertEqual(len(left), 5)
+        equity = [
+            resolve_dca_line("沪深300", 65.0, drawdown_from_52w_high=0.05, policy=self.policy),
+            resolve_dca_line("中证500", 65.0, drawdown_from_52w_high=0.05, policy=self.policy),
+            resolve_dca_line(
+                "标普500",
+                65.0,
+                drawdown_from_52w_high=0.05,
+                premium=0.0,
+                verified=True,
+                tradeable=True,
+                policy=self.policy,
+            ),
+            resolve_dca_line("纳斯达克100", 10.0, policy=self.policy),
+        ]
+        lines = allocate_dca_plan(equity, policy=self.policy, today=today, month_spent=0)
+        week_sum = round(sum(ln["weekly"] for ln in lines), 2)
+        self.assertEqual(week_sum, 60.0)  # 300 / 5
+
+        # After 4 weeks planned (240), last Thursday only 60 left
+        lines2 = allocate_dca_plan(
+            equity, policy=self.policy, today=date(2026, 7, 30), month_spent=240.0
         )
-        self.assertEqual(action, "half")
-        self.assertIn("50%", reason)
+        week_sum2 = round(sum(ln["weekly"] for ln in lines2), 2)
+        self.assertEqual(week_sum2, 60.0)
+        self.assertEqual(lines2[0]["month_remaining"], 60.0)
 
-    def test_us_light_tier(self) -> None:
-        action, reason = resolve_action(
-            "标普500",
-            75.0,
-            percentile_1y=90.0,
-            drawdown_from_52w_high=0.0,
-            policy=self.policy,
-            verified=True,
-            tradeable=True,
-            held_cost=0.0,
-            target_amount=800.0,
+        # Over-spend guard: spent already at target → weekly 0
+        lines3 = allocate_dca_plan(
+            equity, policy=self.policy, today=date(2026, 7, 30), month_spent=300.0
         )
-        self.assertEqual(action, "light")
-        self.assertIn("70%", reason)
-
-    def test_missing_drawdown_fail_closed_on_build(self) -> None:
-        result = try_bootstrap_action(
-            "沪深300",
-            percentile=50.0,
-            percentile_1y=40.0,
-            drawdown_from_52w_high=None,
-            policy=self.policy,
-            held_cost=0.0,
-            target_amount=2700.0,
-        )
-        self.assertIsNotNone(result)
-        assert result is not None
-        action, reason, frac = result
-        self.assertEqual(action, "wait")
-        self.assertEqual(frac, 0.0)
-        self.assertIn("失败关闭", reason)
-
-    def test_ndx_never_builds(self) -> None:
-        action, _ = resolve_action(
-            "纳斯达克100",
-            50.0,
-            percentile_1y=10.0,
-            drawdown_from_52w_high=0.20,
-            policy=self.policy,
-            verified=False,
-            tradeable=False,
-            held_cost=0.0,
-            target_amount=300.0,
-        )
-        self.assertEqual(action, "reference")
-
-    def test_attach_drawdowns_merges_fields(self) -> None:
-        indexes = {"沪深300": {"pe_percentile": 50.0}}
-
-        def fake_fetch(name: str) -> dict:
-            return {
-                "close": 4500.0,
-                "high_52w": 5000.0,
-                "drawdown_from_52w_high": 0.1,
-                "drawdown_from_52w_high_pct": 10.0,
-                "source": "test",
-                "status": "ok",
-            }
-
-        attach_drawdowns(indexes, names=("沪深300",), fetcher=fake_fetch)
-        self.assertEqual(indexes["沪深300"]["drawdown_from_52w_high"], 0.1)
+        self.assertEqual(round(sum(ln["weekly"] for ln in lines3), 2), 0.0)
 
 
 if __name__ == "__main__":

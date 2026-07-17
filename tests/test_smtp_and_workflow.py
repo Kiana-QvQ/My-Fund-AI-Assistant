@@ -107,33 +107,33 @@ class SmtpMockTests(unittest.TestCase):
 
 
 class WorkflowPlanSimulationTests(unittest.TestCase):
-    def test_holiday_runs_us_readme_not_email(self) -> None:
+    def test_holiday_runs_us_readme_and_event_email(self) -> None:
         plan = workflow_plan.plan_portfolio_update_steps(
-            run="no", run_us="yes", alert_mode="auto"
+            run="no", run_us="yes", alert_mode="event"
         )
         self.assertFalse(plan["refresh_full"])
         self.assertTrue(plan["refresh_us_only"])
         self.assertTrue(plan["update_readme"])
         self.assertTrue(plan["commit"])
-        self.assertFalse(plan["send_email"])
+        self.assertTrue(plan["send_email"])
+        self.assertEqual(plan["email_mode"], "event")
         self.assertTrue(plan["holiday_notice"])
 
-    def test_trading_day_morning_can_email(self) -> None:
+    def test_trading_day_auto_can_email(self) -> None:
         plan = workflow_plan.plan_portfolio_update_steps(
-            run="yes", run_us="yes", alert_mode="morning"
+            run="yes", run_us="yes", alert_mode="auto"
         )
         self.assertTrue(plan["refresh_full"])
         self.assertFalse(plan["refresh_us_only"])
         self.assertTrue(plan["send_email"])
-        self.assertEqual(plan["email_slot"], "morning")
+        self.assertEqual(plan["email_mode"], "auto")
 
-    def test_evening_can_email_with_evening_slot(self) -> None:
+    def test_weekly_dca_mode(self) -> None:
         plan = workflow_plan.plan_portfolio_update_steps(
-            run="yes", run_us="yes", alert_mode="evening"
+            run="yes", run_us="yes", alert_mode="weekly_dca"
         )
-        self.assertTrue(plan["refresh_full"])
         self.assertTrue(plan["send_email"])
-        self.assertEqual(plan["email_slot"], "evening")
+        self.assertEqual(plan["email_mode"], "weekly_dca")
 
     def test_skip_mode_blocks_email(self) -> None:
         plan = workflow_plan.plan_portfolio_update_steps(
@@ -149,9 +149,9 @@ class WorkflowPlanSimulationTests(unittest.TestCase):
         self.assertIn("python -m compileall -q app scripts tests", text)
         self.assertIn("Failure notice", text)
         self.assertIn("steps.gate.outputs.run != 'yes' && steps.gate.outputs.run_us == 'yes'", text)
-        self.assertIn("--slot", text)
-        self.assertIn("evening", text)
-        # Simulated holiday path must agree with YAML intent.
+        self.assertIn("--mode", text)
+        self.assertIn("weekly_dca", text)
+        self.assertIn("persist-state", text)
         holiday = workflow_plan.plan_portfolio_update_steps(
             run="no", run_us="yes", alert_mode="skip"
         )

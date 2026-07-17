@@ -1,9 +1,12 @@
-"""Send at most one daily action email for buy / take-profit signals.
+"""Send DCA (weekly) and build (event) emails — never merged into one stream.
 
-US rules (fail-closed):
-- S&P 500: only when Multpl index PE is verified; else alert, never buy.
-- Nasdaq 100: always unverified → never buy.
-- Never use yfinance ETF PE for decisions.
+Kinds:
+- weekly_dca: Thursday plan email (always when there is any non-zero weekly buy
+  or explicit pause notice for watched indexes)
+- event_dca: mid-week multiplier / pause / resume changes
+- event_build: build tier become-buyable / lose-buyable / tier change
+
+US rules (fail-closed): SPX needs Multpl verification; NDX never auto.
 """
 
 from __future__ import annotations
@@ -19,26 +22,35 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = Path(__file__).resolve().parent
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-from policy_rules import (  # noqa: E402
-    allocation_fraction,
-    bootstrap_planned_amount,
-    bootstrap_summary_line,
-    decision_label,
-    load_policy,
-    resolve_action,
-    rules,
+from alert_state import (  # noqa: E402
+    diff_fingerprint,
+    load_alert_state,
+    save_alert_state,
 )
-from trading_calendar import resolve_order_window, today_cst  # noqa: E402
+from investment_plan import (  # noqa: E402
+    allocate_dca_plan,
+    build_summary_line,
+    dca_summary_line,
+    fingerprint_build,
+    fingerprint_dca,
+    resolve_build_line,
+    resolve_dca_line,
+)
+from policy_rules import load_policy  # noqa: E402
+from trading_calendar import (  # noqa: E402
+    is_a_share_trading_day,
+    next_a_share_trading_day,
+    resolve_order_window,
+    today_cst,
+)
 
 SNAPSHOT_PATH = ROOT / "data" / "market_snapshot.json"
 HOLDINGS_PATH = ROOT / "config" / "portfolio_holdings.json"
-ALERT_LOG_PATH = ROOT / "data" / "trade_alert_log.json"
 CST = timezone(timedelta(hours=8))
 
 A_SHARE = ("沪深300", "中证500")
@@ -49,7 +61,7 @@ FUND_BY_INDEX = {
     "标普500": ("050025", "博时标普500ETF联接A", 0.08),
     "纳斯达克100": ("016452", "南方纳斯达克100指数发起(QDII)A", 0.03),
 }
-SHORT_BOND = ("012773", "嘉实超短债债券A", 0.51)
+WATCH = ("沪深300", "中证500", "标普500")
 
 
 def mask_email(address: str) -> str:
@@ -61,13 +73,6 @@ def mask_email(address: str) -> str:
     else:
         masked = local[:2] + "****" + local[-4:]
     return f"{masked}@{domain}"
-
-
-def env_float(name: str, default: float) -> float:
-    raw = os.environ.get(name, "").strip()
-    if not raw:
-        return default
-    return float(raw)
 
 
 def load_snapshot(path: Path) -> dict:
@@ -91,418 +96,144 @@ def building_principal() -> float:
     return float(doc.get("building_principal") or 10000.0)
 
 
-def collect_signals(snapshot: dict, monthly: float, policy: dict) -> dict:
+def actual_dca_spent(month_key: str, policy: dict | None = None) -> float:
+    """Sum recorded **DCA** buys this month (ledger truth, not emails).
+
+    Only counts purpose=dca, or note containing 定投/dca.
+    Bootstrap / other buys on the same funds do not consume the DCA budget.
+    """
+    if not HOLDINGS_PATH.is_file():
+        return 0.0
+    from investment_plan import dca_config  # local import for sleeve codes
+
+    pol = policy or load_policy()
+    sleeve_codes = {
+        str(s.get("fund_code"))
+        for s in (dca_config(pol).get("sleeves") or [])
+        if s.get("fund_code")
+    }
+    doc = json.loads(HOLDINGS_PATH.read_text(encoding="utf-8"))
+    total = 0.0
+    for tx in doc.get("transactions") or []:
+        if tx.get("side") != "buy":
+            continue
+        if str(tx.get("trade_date") or "")[:7] != month_key:
+            continue
+        fund = str(tx.get("fund_code") or "")
+        if sleeve_codes and fund not in sleeve_codes:
+            continue
+        purpose = str(tx.get("purpose") or "").strip().lower()
+        note = str(tx.get("note") or "")
+        is_dca = purpose == "dca" or "定投" in note or "dca" in note.lower()
+        if not is_dca:
+            continue
+        total += float(tx.get("amount") or tx.get("cost_delta") or 0.0)
+    return round(total, 2)
+
+
+def weekly_dca_due(today) -> bool:
+    """Send the Thursday plan on Thursday or its first following A-share day."""
+    if today.weekday() == 3:
+        return True
+    days_since_thursday = (today.weekday() - 3) % 7
+    thursday = today - timedelta(days=days_since_thursday)
+    if thursday >= today:
+        return False
+    try:
+        if is_a_share_trading_day(thursday):
+            return False
+        return next_a_share_trading_day(thursday) == today
+    except Exception:
+        return False
+
+
+def collect_dca(
+    snapshot: dict,
+    policy: dict,
+    *,
+    today=None,
+    month_spent: float = 0.0,
+) -> list[dict]:
     indexes = snapshot.get("indexes", {})
-    us_meta = snapshot.get("us_meta", {})
+    equity_lines = []
+    for name in WATCH:
+        item = indexes.get(name, {})
+        equity_lines.append(
+            resolve_dca_line(
+                name,
+                item.get("pe_percentile"),
+                premium=item.get("qdii_premium"),
+                drawdown_from_52w_high=item.get("drawdown_from_52w_high"),
+                policy=policy,
+                verified=item.get("verified"),
+                tradeable=item.get("tradeable"),
+            )
+        )
+    # 纳指 multiplier line (excluded → 0) so allocate can redirect weight
+    ndx = indexes.get("纳斯达克100", {})
+    equity_lines.append(
+        resolve_dca_line(
+            "纳斯达克100",
+            ndx.get("pe_percentile"),
+            premium=ndx.get("qdii_premium"),
+            drawdown_from_52w_high=ndx.get("drawdown_from_52w_high"),
+            policy=policy,
+            verified=ndx.get("verified"),
+            tradeable=ndx.get("tradeable"),
+        )
+    )
+    lines = allocate_dca_plan(
+        equity_lines,
+        policy=policy,
+        today=today or today_cst(),
+        month_spent=month_spent,
+    )
+    # Attach PE for equity sleeves
+    for line in lines:
+        idx = line["name"]
+        if idx in indexes:
+            item = indexes[idx]
+            line["pe"] = item.get("pe_ttm")
+            line["pct_10y"] = item.get("pe_percentile")
+    return lines
+
+
+def collect_build(snapshot: dict, policy: dict) -> list[dict]:
+    indexes = snapshot.get("indexes", {})
     held = holdings_cost()
     principal = building_principal()
-    r = rules(policy)
-    a_buy = float(r.get("a_share_normal_percentile_below", 40))
-    us_buy = float(r.get("us_normal_percentile_below", 50))
-    boot_line = bootstrap_summary_line(policy)
-
-    rows: list[str] = []
-    buy_a: list[str] = []
-    buy_us: list[str] = []
-    buy_lines: list[str] = []
-    take_profit_lines: list[str] = []
-    take_profit_a: list[str] = []
-    take_profit_us: list[str] = []
-    alert_lines: list[str] = list(us_meta.get("alerts") or [])
-    paused_amount = 0.0
-    spx_failed = False
-    has_bootstrap = False
-
-    for name in (*A_SHARE, *US):
+    lines = []
+    for name in WATCH:
         item = indexes.get(name, {})
-        pe = item.get("pe_ttm")
-        pct = item.get("pe_percentile")
-        pct_1y = item.get("pe_percentile_1y")
-        premium = item.get("qdii_premium")
         code, fund_name, weight = FUND_BY_INDEX[name]
-        target_amount = principal * weight
-        held_cost = float(held.get(code, 0) or 0)
-        action, reason = resolve_action(
+        line = resolve_build_line(
             name,
-            pct,
-            percentile_1y=pct_1y,
+            item.get("pe_percentile"),
+            percentile_1y=item.get("pe_percentile_1y"),
             drawdown_from_52w_high=item.get("drawdown_from_52w_high"),
-            premium=premium,
+            premium=item.get("qdii_premium"),
             policy=policy,
             verified=item.get("verified"),
             tradeable=item.get("tradeable"),
-            held_cost=held_cost,
-            target_amount=target_amount,
+            held_cost=float(held.get(code, 0) or 0),
+            target_amount=principal * weight,
         )
-        month_slice = round(monthly * weight, 2)
-        if action == "bootstrap":
-            amount = bootstrap_planned_amount(
-                held_cost,
-                target_amount,
-                policy,
-                month_slice=month_slice,
-                fraction=0.25,
-            )
-            has_bootstrap = True
-        elif action in ("triple", "double", "sesqui", "buy", "light", "half"):
-            amount = round(month_slice * allocation_fraction(action, policy), 2)
-        else:
-            amount = month_slice
-        pe_text = f"{pe:.2f}" if isinstance(pe, (int, float)) else "-"
-        pct_text = f"{pct:.2f}%" if isinstance(pct, (int, float)) else (
-            "无统计分位" if name == "纳斯达克100" else "-"
-        )
-        pct_1y_text = f"{pct_1y:.2f}%" if isinstance(pct_1y, (int, float)) else (
-            "无统计分位" if name == "纳斯达克100" else "-"
-        )
-        dd = item.get("drawdown_from_52w_high_pct")
-        dd_text = f"{dd:.2f}%" if isinstance(dd, (int, float)) else "-"
-        premium_text = (
-            f"{item.get('qdii_premium_pct'):.2f}%"
-            if isinstance(item.get("qdii_premium_pct"), (int, float))
-            else "-"
-        )
-        label = decision_label(action)
-        verified_flag = item.get("verified")
-        if name in A_SHARE:
-            verify_text = "A股源"
-        elif name == "纳斯达克100":
-            verify_text = "仅参考"
-        elif verified_flag is True:
-            verify_text = "已核验"
-        else:
-            verify_text = "未核验"
-        rows.append(
-            f"- {name}｜PE {pe_text}｜10年分位 {pct_text}｜1年分位 {pct_1y_text}｜"
-            f"52周回撤 {dd_text}｜溢价 {premium_text}｜{verify_text}｜{label}｜{reason}"
-        )
-        if name == "标普500" and verified_flag is not True:
-            spx_failed = True
-            for err in item.get("validation_errors") or [reason]:
-                if err not in alert_lines:
-                    alert_lines.append(str(err))
-
-        if action in (
-            "buy",
-            "double",
-            "triple",
-            "sesqui",
-            "light",
-            "half",
-            "bootstrap",
-        ):
-            buy_lines.append(f"  · {fund_name}（{code}）约 {amount:.2f} 元（{label}）")
-            if name in A_SHARE:
-                buy_a.append(name)
-            else:
-                buy_us.append(name)
-            if amount < month_slice:
-                paused_amount += month_slice - amount
-        elif action == "take_profit" and held_cost > 0:
-            take_profit_lines.append(
-                f"  · {fund_name}（{code}）建议赎回约 "
-                f"{held_cost / 3:.2f}~{held_cost / 2:.2f} 元（当前账本 {held_cost:.2f}）"
-            )
-            if name in A_SHARE:
-                take_profit_a.append(name)
-            else:
-                take_profit_us.append(name)
-            paused_amount += month_slice
-        else:
-            paused_amount += month_slice
-
-    short_code, short_name, short_w = SHORT_BOND
-    short_base = round(monthly * short_w, 2)
-    return {
-        "rows": rows,
-        "buy_a": buy_a,
-        "buy_us": buy_us,
-        "buy_lines": buy_lines,
-        "take_profit_lines": take_profit_lines,
-        "alert_lines": alert_lines,
-        "spx_failed": spx_failed,
-        "paused_amount": paused_amount,
-        "short_code": short_code,
-        "short_name": short_name,
-        "short_base": short_base,
-        "short_total": round(short_base + paused_amount, 2),
-        "has_buy": bool(buy_a or buy_us),
-        "has_bootstrap": has_bootstrap,
-        "has_take_profit": bool(take_profit_lines),
-        "take_profit_a": take_profit_a,
-        "take_profit_us": take_profit_us,
-        "has_a_action": bool(buy_a or take_profit_a),
-        "has_us_action": bool(buy_us or take_profit_us),
-        "has_us_alert": spx_failed or bool(alert_lines),
-        "a_buy": a_buy,
-        "us_buy": us_buy,
-        "boot_line": boot_line,
-        "principal": principal,
-    }
+        line["fund_code"] = code
+        line["fund_name"] = fund_name
+        line["pct_1y"] = item.get("pe_percentile_1y")
+        line["dd"] = item.get("drawdown_from_52w_high_pct")
+        lines.append(line)
+    return lines
 
 
-def build_body(
-    snapshot: dict,
-    monthly: float,
-    policy: dict,
-    *,
-    force: bool = False,
-    slot: str = "morning",
-    timing: dict[str, str] | None = None,
-) -> tuple[str, str]:
-    timing = timing or resolve_order_window(
-        slot, as_of=snapshot.get("as_of"), today=today_cst()
-    )
-    now = datetime.now(CST).strftime("%Y-%m-%d %H:%M CST")
-    data = collect_signals(snapshot, monthly, policy)
-    slot_norm = timing["slot"]
-
-    if slot_norm == "evening":
-        window_label = "晚间A股收盘后信号"
-        order_hint = timing["instruction"]
-    else:
-        window_label = "上午操作提醒（含QDII）"
-        order_hint = timing["instruction"]
-
-    # Evening focuses on A-share; US/QDII wait for morning premium/QDII refresh.
-    evening_focus = slot_norm == "evening"
-    buy_names = data["buy_a"] if evening_focus else (data["buy_a"] + data["buy_us"])
-    has_action_for_slot = (
-        data["has_a_action"]
-        if evening_focus
-        else (data["has_buy"] or data["has_take_profit"])
-    )
-
-    if has_action_for_slot or (
-        force and (data["has_buy"] or data["has_take_profit"])
-    ):
-        title = f"【定投行动提醒】{timing['signal_date']}｜{window_label}"
-        parts = []
-        if evening_focus:
-            if data["buy_a"]:
-                parts.append(
-                    "A股1年建仓/买入/半额" if data.get("has_bootstrap") else "A股买入/半额"
-                )
-            if data.get("take_profit_a"):
-                parts.append("A股止盈")
-        else:
-            if data["has_buy"]:
-                parts.append(
-                    "1年建仓/买入/半额" if data.get("has_bootstrap") else "买入/半额"
-                )
-            if data["has_take_profit"]:
-                parts.append("止盈")
-        why = "存在需要人工确认的行动：" + ("、".join(parts) if parts else "联调") + "。"
-        if data["spx_failed"]:
-            why += " 注意：标普估值校验失败，美股买入信号已禁止。"
-        if evening_focus and data.get("has_us_action"):
-            why += " 美股/QDII 信号请等上午邮件（溢价复核后再操作）。"
-        why += f" {order_hint}"
-        names = "、".join(buy_names)
-        subject = (
-            f"{title}｜可买：{names}" if names else f"{title}｜止盈观察"
-        )
-    else:
-        title = f"【定投联调】{timing['signal_date']}｜{window_label}｜无行动信号"
-        why = (
-            "当前无买入/止盈行动；本邮件仅因 --force / 手动联调而发送。"
-            if force
-            else "当前无买入/止盈行动。"
-        )
-        subject = title
-
-    a_text = "、".join(data["buy_a"]) if data["buy_a"] else "无"
-    us_text = "、".join(data["buy_us"]) if data["buy_us"] else "无"
-
-    # Filter suggested orders: evening = A-share funds only.
-    a_codes = {FUND_BY_INDEX[n][0] for n in A_SHARE}
-
-    def _is_a_line(line: str) -> bool:
-        return any(code in line for code in a_codes)
-
-    if evening_focus:
-        buy_block_lines = [line for line in data["buy_lines"] if _is_a_line(line)]
-        tp_block_lines = [
-            line for line in data["take_profit_lines"] if _is_a_line(line)
-        ]
-        us_preview_lines = [
-            f"  · （仅预览，勿今晚下单）{line.lstrip(' ·')}"
-            for line in data["buy_lines"]
-            if not _is_a_line(line)
-        ]
-    else:
-        buy_block_lines = list(data["buy_lines"])
-        tp_block_lines = list(data["take_profit_lines"])
-        us_preview_lines = []
-
-    buy_block = (
-        "\n".join(buy_block_lines + us_preview_lines)
-        if (buy_block_lines or us_preview_lines)
-        else "  · 无"
-    )
-    tp_block = (
-        "\n".join(tp_block_lines)
-        if tp_block_lines
-        else "  · 无（账本无对应持仓时仅观察）"
-    )
-    alert_block = (
-        "\n".join(f"- {line}" for line in data["alert_lines"])
-        if data["alert_lines"]
-        else "- 无"
-    )
-
-    focus_note = (
-        "本封为【晚间】邮件：以 A 股收盘后估值为主；请在下一个交易日 15:00 前操作。"
-        "不把今晚判断写成「今晚已按今日净值成交」。"
-        if slot_norm == "evening"
-        else "本封为【上午】邮件：可复核 QDII/溢价，并提醒今日 15:00 前执行；"
-        "此处不是「今日盘中新收盘判断」。"
-    )
-
-    body = f"""{title}
-
-生成时间：{now}
-邮件时段：{slot_norm}（{window_label}）
-signal_date（估值信号日）：{timing["signal_date"]}
-order_date（建议申购日）：{timing["order_date"]}
-cutoff_time：{timing["cutoff_time"]}
-{order_hint}
-
-【为何发这封邮件】
-{why}
-{focus_note}
-
-【策略时点】
-1）A股/美股近10年定投：＜40%→300%；40%~50%→200%；50%~60%→150%；60%~70%→100%；70%~80%→70%；80%~90%→50%；≥90%停买/止盈
-2）1年建仓三档（与十年取高）：{data.get('boot_line', '')}
-3）纳斯达克100：估值未核验，永不自动买入
-4）QDII 场内溢价＞2% 暂缓买入
-5）定投提醒默认每月最多 1 封（见 portfolio_policy.alerts）
-
-【信号结论】
-A股可买/半额：{a_text}
-美股可买/半额：{us_text}
-
-【美股核验告警】
-{alert_block}
-
-【四指数估值】
-{chr(10).join(data["rows"])}
-
-【建议操作】
-权益买入：
-{buy_block}
-分批止盈：
-{tp_block}
-短债底仓：{data["short_name"]}（{data["short_code"]}）约 {data["short_total"]:.2f} 元
-
-【场外申购说明（招行/工行等）】
-- {timing["nav_note_a_share"]}
-- {timing["nav_note_qdii"]}
-- 估值信号日 ≠ 申购成交净值日：这是场外未知价机制下的正常现象。
-
-【执行提醒】
-1. 以银行 APP 实际申购/赎回状态与基金合同为准。
-2. 买入：python scripts/record_holding.py buy --fund 代码 --amount 金额 [--nav 净值]
-3. 卖出：python scripts/record_holding.py sell --fund 代码 --proceeds 市值 --cost 成本
-4. 仅研究提醒，不构成投资建议，不会自动下单。
-
-— My Fund AI Assistant
-"""
-    return subject, body
-
-
-def has_trade_action(data: dict) -> bool:
-    """True only when user needs to buy/sell in the bank app."""
-    return bool(data.get("has_a_action") or data.get("has_us_action"))
-
-
-def should_send_for_slot(data: dict, slot: str, *, force: bool) -> tuple[bool, str]:
-    """Send only when there is a real trade action; never for valuation-only noise."""
-    if not has_trade_action(data):
-        return False, "no_trade_action"
-    slot_norm = (slot or "morning").strip().lower()
-    if force:
-        return True, "force_with_action"
-    if slot_norm == "evening":
-        if data.get("has_a_action"):
-            return True, "a_share_action"
-        return False, "evening_no_a_share_action"
-    # morning: A-share reminder and/or US/QDII action
-    return True, "morning_action"
-
-
-def _alert_cfg(policy: dict) -> dict:
-    return policy.get("alerts") or {}
-
-
-def load_alert_log(path: Path | None = None) -> dict:
-    path = path or ALERT_LOG_PATH
-    if not path.is_file():
-        return {"month": "", "count": 0, "events": []}
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return {"month": "", "count": 0, "events": []}
-
-
-def save_alert_log(doc: dict, path: Path | None = None) -> None:
-    path = path or ALERT_LOG_PATH
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
-
-
-def month_key_cst(day=None) -> str:
-    d = day or today_cst()
-    return f"{d.year:04d}-{d.month:02d}"
-
-
-def check_monthly_email_cap(
-    data: dict,
-    policy: dict,
-    *,
-    force: bool = False,
-) -> tuple[bool, str]:
-    """Limit routine DCA emails per CST calendar month.
-
-    Take-profit with holdings can bypass when configured.
-    """
-    cfg = _alert_cfg(policy)
-    max_n = int(cfg.get("max_emails_per_month", 1))
-    if max_n <= 0:
-        return True, "monthly_cap_disabled"
-    bypass = bool(cfg.get("take_profit_bypasses_monthly_cap", True))
-    if bypass and data.get("has_take_profit"):
-        return True, "take_profit_bypass"
-    # force still respects monthly DCA cap (avoids spam during联调 of routine signals)
-    log = load_alert_log()
-    month = month_key_cst()
-    count = int(log.get("count") or 0) if log.get("month") == month else 0
-    if count >= max_n:
-        return False, f"monthly_cap_reached ({count}/{max_n} in {month})"
-    return True, f"monthly_cap_ok ({count}/{max_n} in {month})"
-
-
-def record_email_sent(slot: str, subject: str, *, dry_run: bool = False) -> None:
-    if dry_run:
+def _write_github_summary(markdown: str) -> None:
+    summary = os.environ.get("GITHUB_STEP_SUMMARY", "").strip()
+    if not summary:
         return
-    month = month_key_cst()
-    log = load_alert_log()
-    if log.get("month") != month:
-        log = {"month": month, "count": 0, "events": []}
-    log["count"] = int(log.get("count") or 0) + 1
-    events = list(log.get("events") or [])
-    events.append(
-        {
-            "at": datetime.now(CST).isoformat(timespec="seconds"),
-            "slot": slot,
-            "subject": subject[:120],
-        }
-    )
-    log["events"] = events[-20:]
-    save_alert_log(log)
+    with open(summary, "a", encoding="utf-8") as handle:
+        handle.write(markdown)
+        if not markdown.endswith("\n"):
+            handle.write("\n")
 
 
 def require_mail_config() -> dict[str, str]:
@@ -512,7 +243,6 @@ def require_mail_config() -> dict[str, str]:
     smtp_host = os.environ.get("SMTP_HOST", "").strip() or "smtp.qq.com"
     smtp_port = os.environ.get("SMTP_PORT", "").strip() or "465"
     mail_from = os.environ.get("MAIL_FROM", "").strip() or smtp_user
-
     missing = [
         name
         for name, value in (
@@ -526,7 +256,7 @@ def require_mail_config() -> dict[str, str]:
         raise SystemExit(
             "缺少邮件环境变量: "
             + ", ".join(missing)
-            + "。请在本地 .env 或 GitHub Secrets 配置，勿把完整邮箱写入仓库。"
+            + "。请在本地 .env 或 GitHub Secrets 配置。"
         )
     return {
         "to": to_addr,
@@ -538,23 +268,7 @@ def require_mail_config() -> dict[str, str]:
     }
 
 
-def _write_github_summary(markdown: str) -> None:
-    summary = os.environ.get("GITHUB_STEP_SUMMARY", "").strip()
-    if not summary:
-        return
-    with open(summary, "a", encoding="utf-8") as handle:
-        handle.write(markdown)
-        if not markdown.endswith("\n"):
-            handle.write("\n")
-
-
-def send_email(
-    subject: str,
-    body: str,
-    dry_run: bool = False,
-    *,
-    retries: int = 2,
-) -> None:
+def send_email(subject: str, body: str, dry_run: bool = False, *, retries: int = 2) -> None:
     if dry_run:
         to_addr = os.environ.get("ALERT_EMAIL", "").strip() or "unset@example.com"
         print(f"准备发送至 {mask_email(to_addr)} | subject={subject}")
@@ -565,13 +279,11 @@ def send_email(
     cfg = require_mail_config()
     masked = mask_email(cfg["to"])
     print(f"准备发送至 {masked} | subject={subject}")
-
     msg = MIMEMultipart()
     msg["From"] = cfg["from"]
     msg["To"] = cfg["to"]
     msg["Subject"] = subject
     msg.attach(MIMEText(body, "plain", "utf-8"))
-
     context = ssl.create_default_context()
     port = int(cfg["port"])
     last_error: Exception | None = None
@@ -601,7 +313,6 @@ def send_email(
                 import time
 
                 time.sleep(2 * attempt)
-
     _write_github_summary(
         "### 邮件发送失败\n\n"
         f"- 收件人: `{masked}`\n"
@@ -612,27 +323,153 @@ def send_email(
     raise SystemExit(f"邮件发送失败（已重试 {attempts} 次）: {last_error}")
 
 
+def build_dca_email(
+    *,
+    title: str,
+    lines: list[dict],
+    timing: dict[str, str],
+    policy: dict,
+    changes: list[str] | None = None,
+) -> tuple[str, str]:
+    now = datetime.now(CST).strftime("%Y-%m-%d %H:%M CST")
+    ops = [ln for ln in lines if ln["weekly"] > 0]
+    paused = [ln for ln in lines if ln["paused"]]
+    subject = f"【定投计划】{timing['order_date']}｜{title}"
+    if ops:
+        names = "、".join(ln["name"] for ln in ops)
+        subject = f"{subject}｜操作：{names}"
+    elif paused:
+        subject = f"{subject}｜本周暂停权益定投"
+
+    op_block = (
+        "\n".join(
+            f"  · {ln['fund_name']}（{ln['fund_code']}）本周约 {ln['weekly']:.2f} 元"
+            f"（月额度 {ln['monthly']:.0f}｜倍率 {ln['multiplier'] * 100:.0f}%）"
+            f"｜{ln['reason']}"
+            for ln in ops
+        )
+        or "  · 无（本周各标的定投均为 0）"
+    )
+    pause_block = (
+        "\n".join(f"  · {ln['name']}：{ln['reason']}" for ln in paused)
+        or "  · 无"
+    )
+    change_block = (
+        "\n".join(f"- {c}" for c in changes) if changes else "- （固定周报，无额外变更摘要）"
+    )
+    total_week = sum(float(ln["weekly"]) for ln in lines)
+    total_month = float((lines[0].get("month_target_total") if lines else 0) or 0)
+    thursdays_left = int((lines[0].get("thursdays_left") if lines else 0) or 0)
+    month_spent = float((lines[0].get("month_spent") if lines else 0) or 0)
+    month_remaining = float((lines[0].get("month_remaining") if lines else 0) or 0)
+
+    body = f"""{subject}
+
+生成时间：{now}
+邮件类型：定投（与建仓邮件分离）
+signal_date：{timing["signal_date"]}
+order_date：{timing["order_date"]}
+cutoff_time：{timing["cutoff_time"]}
+请在 {timing["order_date"]} 的 15:00 前于银行 APP 提交场外 A 类申购。
+
+【规则】
+{dca_summary_line(policy)}
+工资日资金留存账户，由每周四计划统一调度，无单独工资日邮件。
+
+【本月预算】
+- 本月计划总额：{total_month:.2f} 元（组合基础 300 / 封顶 1000）
+- 本月账本已记定投：{month_spent:.2f} 元；剩余可投：{month_remaining:.2f} 元
+- 本月剩余周四：{thursdays_left}；本周合计约 {total_week:.2f} 元
+- 说明：仅统计 purpose=dca / 备注含「定投」的买入；建仓等其它买入不扣定投额度。
+
+【变更摘要】
+{change_block}
+
+【本周操作】
+{op_block}
+
+【暂停/观望】
+{pause_block}
+
+【说明】
+- 组合月总额按目标仓位分给 5 支；权益暂停/纳指份额并入短债。
+- 正常估值固定 100%；低估才 200%/300% 加码；总额严格 ≤1000。
+- 本周金额 = 本月剩余预算 ÷ 剩余周四（含本周），避免 5 周月超支。
+- 申购完成后请告知助手记账（`record_holding.py buy --purpose dca`），预算才会扣减。
+- 仅研究提醒，不自动下单。
+
+— My Fund AI Assistant
+"""
+    return subject, body
+
+
+def build_build_email(
+    *,
+    lines: list[dict],
+    timing: dict[str, str],
+    policy: dict,
+    changes: list[str],
+) -> tuple[str, str]:
+    now = datetime.now(CST).strftime("%Y-%m-%d %H:%M CST")
+    active = [ln for ln in lines if ln["active"]]
+    subject = f"【建仓事件】{timing['signal_date']}｜状态变更"
+    if active:
+        subject += "｜可建：" + "、".join(ln["name"] for ln in active)
+    else:
+        subject += "｜条件失效/不可买"
+
+    active_block = (
+        "\n".join(
+            f"  · {ln['fund_name']}（{ln['fund_code']}）{ln['tier_label']}"
+            f" 约 {ln['amount']:.2f} 元｜{ln['reason']}"
+            for ln in active
+        )
+        or "  · 当前无满足条件的建仓标的"
+    )
+    change_block = "\n".join(f"- {c}" for c in changes) or "- （无）"
+    body = f"""{subject}
+
+生成时间：{now}
+邮件类型：建仓事件（不与周度定投合并）
+signal_date：{timing["signal_date"]}
+order_date：{timing["order_date"]}
+cutoff_time：{timing["cutoff_time"]}
+
+【规则】
+{build_summary_line(policy)}
+
+【状态变更】
+{change_block}
+
+【当前可建】
+{active_block}
+
+【说明】
+- 仅在可买/不可买或档位实质性变化时发送。
+- 场外未知价：估值日 ≠ 净值确认日属正常。
+- 仅研究提醒，不自动下单。
+
+— My Fund AI Assistant
+"""
+    return subject, body
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="仅在有买入/止盈等实际操作时发送提醒；区分晚间/上午申购窗口语义"
+        description="定投周报 / 定投事件 / 建仓事件 分开发送"
     )
     parser.add_argument("--snapshot", default=str(SNAPSHOT_PATH))
-    parser.add_argument(
-        "--monthly",
-        type=float,
-        default=env_float("MONTHLY_BUDGET", 300.0),
-    )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument(
-        "--force",
-        action="store_true",
-        help="有操作时忽略时段过滤（晚间也可发美股）；无操作仍不发信",
+        "--mode",
+        choices=("auto", "weekly_dca", "event", "force_dca", "force_build"),
+        default="auto",
+        help="auto=周四发定投周报+检测事件；event=仅事件；weekly_dca=强制周报",
     )
     parser.add_argument(
-        "--slot",
-        choices=("morning", "evening"),
-        default="morning",
-        help="morning=今日15:00前操作提醒；evening=下一交易日15:00前操作提醒",
+        "--persist-state",
+        action="store_true",
+        help="把最新指纹写入 data/alert_state.json（Actions 应开启）",
     )
     args = parser.parse_args()
 
@@ -641,73 +478,158 @@ def main() -> None:
         snapshot_path = ROOT / snapshot_path
     if not snapshot_path.is_file():
         raise SystemExit(f"找不到快照文件: {snapshot_path}")
+
     snapshot = load_snapshot(snapshot_path)
     policy = load_policy()
-    timing = resolve_order_window(
-        args.slot, as_of=snapshot.get("as_of"), today=today_cst()
+    today = today_cst()
+    timing = resolve_order_window("morning", as_of=snapshot.get("as_of"), today=today)
+    is_thursday = weekly_dca_due(today)
+
+    state = load_alert_state()
+    month_key = today.strftime("%Y-%m")
+    dca_month = state.get("dca_month") or {}
+    month_spent = actual_dca_spent(month_key, policy)
+
+    dca_lines = collect_dca(
+        snapshot, policy, today=today, month_spent=month_spent
     )
+    build_lines = collect_build(snapshot, policy)
+    new_dca_fp = fingerprint_dca(dca_lines)
+    new_build_fp = fingerprint_build(build_lines)
+
+    old_dca = state.get("dca") or {}
+    old_build = state.get("build") or {}
+    dca_changes = diff_fingerprint(old_dca, new_dca_fp)
+    build_changes = diff_fingerprint(old_build, new_build_fp)
+    first_run = not old_dca and not old_build
+
     print(
-        f"邮件时段={timing['slot']} signal_date={timing['signal_date']} "
-        f"order_date={timing['order_date']} cutoff={timing['cutoff_time']}"
+        f"mode={args.mode} thursday={is_thursday} "
+        f"dca_changes={len(dca_changes)} build_changes={len(build_changes)} "
+        f"first_run={first_run} month_spent={month_spent}"
+    )
+    for ln in dca_lines:
+        print(
+            f"DCA {ln['name']}: mult={ln['multiplier']} "
+            f"weekly={ln['weekly']} monthly={ln['monthly']} paused={ln['paused']}"
+        )
+    for ln in build_lines:
+        print(
+            f"BUILD {ln['name']}: active={ln['active']} "
+            f"tier={ln['tier_label']} amount={ln['amount']}"
+        )
+
+    sent_weekly = False
+    sent_event_dca = False
+    email_cfg = (policy.get("dca") or {}).get("email") or {}
+    weekly_enabled = bool(email_cfg.get("weekly_thursday", True))
+    event_enabled = bool(email_cfg.get("event_on_change", True))
+    max_dca_mails = int(email_cfg.get("max_dca_emails_per_month", 6))
+    dca_mails_sent = (
+        int(dca_month.get("emails_sent") or 0)
+        if dca_month.get("year_month") == month_key
+        else 0
     )
 
-    data = collect_signals(snapshot, args.monthly, policy)
+    def dca_quota_left() -> bool:
+        if max_dca_mails <= 0:
+            return False
+        return dca_mails_sent < max_dca_mails
 
-    # SPX failure: fail-closed on buys already; do NOT email without a trade action.
-    if data["spx_failed"] and not has_trade_action(data):
-        msg = (
-            "跳过发送：美股估值未核验且无买入/止盈操作"
-            "（告警写入日志/Summary，不发空操作邮件）。"
+    send_weekly = (
+        weekly_enabled
+        and dca_quota_left()
+        and (
+            args.mode in ("weekly_dca", "force_dca")
+            or (args.mode == "auto" and is_thursday)
         )
-        print(msg)
-        for row in data["rows"]:
-            print(row)
-        for line in data["alert_lines"]:
-            print(f"告警: {line}")
-        _write_github_summary(
-            "### 邮件跳过（无操作）\n\n"
-            "- 原因: 美股核验失败或仅有告警，无银行 APP 买入/止盈动作\n"
-            "- 策略: **无操作不发信**\n"
-        )
-        return
-
-    should, reason = should_send_for_slot(data, args.slot, force=args.force)
-    if not should:
-        print(f"跳过发送：slot={args.slot} reason={reason}")
-        for row in data["rows"]:
-            print(row)
-        _write_github_summary(
-            "### 邮件跳过（无操作）\n\n"
-            f"- slot: `{args.slot}`\n"
-            f"- reason: `{reason}`\n"
-        )
-        return
-
-    ok_cap, cap_reason = check_monthly_email_cap(
-        data, policy, force=args.force
     )
-    if not ok_cap:
-        print(f"跳过发送：{cap_reason}（本月定投提醒已达上限，避免每天刷信）")
-        _write_github_summary(
-            "### 邮件跳过（月上限）\n\n"
-            f"- reason: `{cap_reason}`\n"
-            "- 可在 `config/portfolio_policy.json` → `alerts.max_emails_per_month` 调整"
-            "（默认 1；改为 2 可允许同月上午+晚间各一封）。\n"
-            "- 有持仓止盈默认可突破月上限。\n"
+    if send_weekly:
+        subject, body = build_dca_email(
+            title="周四定投周报",
+            lines=dca_lines,
+            timing=timing,
+            policy=policy,
+            changes=dca_changes or None,
         )
-        return
-    print(f"月发送配额：{cap_reason}")
+        send_email(subject, body, dry_run=args.dry_run)
+        sent_weekly = True
+        dca_mails_sent += 1
 
-    subject, body = build_body(
-        snapshot,
-        args.monthly,
-        policy,
-        force=args.force,
-        slot=args.slot,
-        timing=timing,
+    # 周四周报与事件信可并存；受 event_on_change 与月度封顶约束
+    send_event_dca = (
+        event_enabled
+        and dca_quota_left()
+        and args.mode in ("event", "auto", "force_dca")
+        and (args.mode == "force_dca" or dca_changes)
     )
-    send_email(subject, body, dry_run=args.dry_run)
-    record_email_sent(args.slot, subject, dry_run=args.dry_run)
+    if send_event_dca and dca_changes:
+        subject, body = build_dca_email(
+            title="定投档位/倍率变更",
+            lines=dca_lines,
+            timing=timing,
+            policy=policy,
+            changes=dca_changes,
+        )
+        send_email(subject, body, dry_run=args.dry_run)
+        sent_event_dca = True
+        dca_mails_sent += 1
+    elif (
+        event_enabled
+        and dca_changes
+        and not dca_quota_left()
+        and args.mode in ("event", "auto")
+    ):
+        print(
+            f"定投事件信跳过：本月定投邮件已达上限 {max_dca_mails} 封"
+            f"（已发 {dca_mails_sent}）"
+        )
+
+    send_build = args.mode in ("event", "auto", "force_build") and (
+        args.mode == "force_build" or build_changes
+    )
+    if args.mode == "force_build" or (send_build and build_changes):
+        if args.mode == "force_build" or build_changes:
+            subject, body = build_build_email(
+                lines=build_lines,
+                timing=timing,
+                policy=policy,
+                changes=build_changes or ["（手动 force_build）"],
+            )
+            send_email(subject, body, dry_run=args.dry_run)
+
+    if (
+        not sent_weekly
+        and not sent_event_dca
+        and not (send_build and build_changes)
+        and args.mode != "force_build"
+    ):
+        print("跳过发送：无周四周报且无定投/建仓状态变更（或定投邮件达月上限）")
+        _write_github_summary(
+            "### 邮件跳过\n\n"
+            "- 非周四周报，或定投/建仓指纹无变化，或定投邮件已达月上限\n"
+        )
+
+    if args.persist_state and not args.dry_run:
+        save_alert_state(
+            {
+                "dca": new_dca_fp,
+                "build": new_build_fp,
+                "dca_month": {
+                    "year_month": month_key,
+                    "spent": month_spent,
+                    "emails_sent": dca_mails_sent,
+                    "planned_monthly": float(
+                        (dca_lines[0].get("month_target_total") if dca_lines else 0)
+                        or 0
+                    ),
+                },
+                "updated_at": datetime.now(CST).isoformat(timespec="seconds"),
+            }
+        )
+        print("已更新 data/alert_state.json")
+    elif args.persist_state and args.dry_run:
+        print("dry-run：不写入 alert_state")
 
 
 if __name__ == "__main__":

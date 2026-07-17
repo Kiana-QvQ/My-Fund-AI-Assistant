@@ -9,26 +9,91 @@
     "513500": 0.08,
     "159941": 0.03
   },
+  "dca": {
+    "monthly_base": 300,
+    "monthly_cap": 1000,
+    "full_cap_multiplier": 3.0,
+    "schedule": "thursday_09_cst",
+    "allocate_by": "target_allocation",
+    "sleeves": [
+      {
+        "name": "短债",
+        "fund_code": "012773",
+        "fund_name": "嘉实超短债债券A",
+        "weight_key": "511360",
+        "role": "residual"
+      },
+      {
+        "name": "沪深300",
+        "fund_code": "460300",
+        "fund_name": "华泰柏瑞沪深300ETF联接A",
+        "weight_key": "510300",
+        "role": "equity",
+        "index": "沪深300"
+      },
+      {
+        "name": "中证500",
+        "fund_code": "160119",
+        "fund_name": "南方中证500ETF联接(LOF)A",
+        "weight_key": "510500",
+        "role": "equity",
+        "index": "中证500"
+      },
+      {
+        "name": "标普500",
+        "fund_code": "050025",
+        "fund_name": "博时标普500ETF联接A",
+        "weight_key": "513500",
+        "role": "equity",
+        "index": "标普500"
+      },
+      {
+        "name": "纳斯达克100",
+        "fund_code": "016452",
+        "fund_name": "南方纳斯达克100指数发起(QDII)A",
+        "weight_key": "159941",
+        "role": "excluded",
+        "index": "纳斯达克100"
+      }
+    ],
+    "priority": ["沪深300", "中证500", "标普500", "纳斯达克100", "短债"],
+    "a_share_tiers": [
+      {"percentile_below": 40, "multiplier": 3.0},
+      {"percentile_below": 50, "multiplier": 2.0},
+      {"percentile_below": 60, "multiplier": 1.5},
+      {"percentile_below": 70, "multiplier": 1.0},
+      {"percentile_below": 80, "multiplier": 0.7},
+      {"percentile_below": 90, "multiplier": 0.5},
+      {"percentile_below": 100.1, "multiplier": 0.0}
+    ],
+    "us_tiers": [
+      {"percentile_below": 40, "multiplier": 3.0},
+      {"percentile_below": 50, "multiplier": 2.0},
+      {"percentile_below": 60, "multiplier": 1.5},
+      {"percentile_below": 70, "multiplier": 1.0},
+      {"percentile_below": 80, "multiplier": 0.7},
+      {"percentile_below": 90, "multiplier": 0.5},
+      {"percentile_below": 100.1, "multiplier": 0.0}
+    ],
+    "pause_10y_at_or_above": 90,
+    "stop_boost_drawdown_below": 0.01,
+    "require_drawdown_for_boost": true,
+    "email": {
+      "weekly_thursday": true,
+      "event_on_change": true,
+      "max_dca_emails_per_month": 6,
+      "note": "每周四固定1封周报；事件信仅档位实质变化时发。max_dca_emails_per_month 含周报+定投事件（不含建仓）。设为4≈只保留周报；设为0关闭定投邮件。"
+    },
+    "note": "组合月定投总额基础300、封顶1000，按目标仓位分给5支。A股/美股同一套10年PE档：＜40%→300%；40%～50%→200%；50%～60%→150%；60%～70%→100%；70%～80%→70%；80%～90%→50%；≥90%停买/止盈。触发300%时启用组合备用资金并放大至月封顶1000；建仓规则独立不变。周四09:00周报；按剩余周四拆分且不破月封顶。"
+  },
   "rules": {
     "rebalance_period": "annual",
     "rebalance_deviation": 0.05,
-    "dca_tiers": [
-      {"below": 40, "fraction": 3.0, "action": "triple"},
-      {"below": 50, "fraction": 2.0, "action": "double"},
-      {"below": 60, "fraction": 1.5, "action": "sesqui"},
-      {"below": 70, "fraction": 1.0, "action": "buy"},
-      {"below": 80, "fraction": 0.7, "action": "light"},
-      {"below": 90, "fraction": 0.5, "action": "half"}
-    ],
-    "take_profit_percentile_at_or_above": 90,
     "qdii_premium_pause_above": 0.02,
     "qdii_premium_resume_below": 0.01,
-    "note": "A股/美股共用十年定投：＜40%→300%、40%~50%→200%、50%~60%→150%、60%~70%→100%、70%~80%→70%、80%~90%→50%、≥90%停买。1年建仓见 bootstrap；邮件频率见 alerts。"
-  },
-  "alerts": {
-    "max_emails_per_month": 1,
-    "take_profit_bypasses_monthly_cap": true,
-    "note": "定投提醒默认每月最多1封（CST自然月）。止盈（有持仓）可突破月上限。改为2可允许同月上午+晚间各一封。--force 仍受月上限约束除非同时为止盈突破。"
+    "a_share_take_profit_percentile_at_or_above": 90,
+    "us_take_profit_percentile_at_or_above": 90,
+    "note": "展示/止盈阈值；定投倍率见 dca；建仓见 bootstrap。定投与建仓信号不合并。"
   },
   "bootstrap": {
     "enabled": true,
@@ -44,17 +109,20 @@
           {
             "percentile_1y_at_or_below": 50,
             "fraction": 1.0,
-            "drawdown_at_or_above": 0.05
+            "drawdown_at_or_above": 0.05,
+            "label": "正式小额底仓"
           },
           {
             "percentile_1y_at_or_below": 70,
             "fraction": 0.5,
-            "drawdown_at_or_above": 0.04
+            "drawdown_at_or_above": 0.04,
+            "label": "宽松观测仓"
           },
           {
             "percentile_1y_at_or_below": 90,
             "fraction": 0.25,
-            "drawdown_at_or_above": 0.03
+            "drawdown_at_or_above": 0.03,
+            "label": "宽松观测仓"
           }
         ]
       },
@@ -64,17 +132,20 @@
           {
             "percentile_1y_at_or_below": 55,
             "fraction": 1.0,
-            "drawdown_at_or_above": 0.06
+            "drawdown_at_or_above": 0.06,
+            "label": "正式小额底仓"
           },
           {
             "percentile_1y_at_or_below": 75,
             "fraction": 0.5,
-            "drawdown_at_or_above": 0.05
+            "drawdown_at_or_above": 0.05,
+            "label": "宽松观测仓"
           },
           {
             "percentile_1y_at_or_below": 90,
             "fraction": 0.25,
-            "drawdown_at_or_above": 0.04
+            "drawdown_at_or_above": 0.04,
+            "label": "宽松观测仓"
           }
         ]
       },
@@ -85,22 +156,25 @@
           {
             "percentile_1y_at_or_below": 50,
             "fraction": 1.0,
-            "drawdown_at_or_above": 0.05
+            "drawdown_at_or_above": 0.05,
+            "label": "正式小额底仓"
           },
           {
             "percentile_1y_at_or_below": 70,
             "fraction": 0.5,
-            "drawdown_at_or_above": 0.04
+            "drawdown_at_or_above": 0.04,
+            "label": "宽松观测仓"
           },
           {
             "percentile_1y_at_or_below": 85,
             "fraction": 0.25,
-            "drawdown_at_or_above": 0.03
+            "drawdown_at_or_above": 0.03,
+            "label": "宽松观测仓"
           }
         ]
       }
     },
-    "note": "1年建仓三档（与十年定投取较高者）：100%/50%/25%。建仓规则未改。"
+    "note": "建仓邮件独立、仅状态变更时发送。不与周度定投邮件合并。"
   },
   "guardrails": {
     "paper_or_advice_only": true,

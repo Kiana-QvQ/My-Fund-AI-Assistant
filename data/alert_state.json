@@ -1,0 +1,65 @@
+{
+  "dca": {
+    "短债": {
+      "multiplier": 1.0,
+      "monthly": 186.0,
+      "weekly": 93.0,
+      "paused": false,
+      "action": "buy"
+    },
+    "沪深300": {
+      "multiplier": 1.0,
+      "monthly": 81.0,
+      "weekly": 40.5,
+      "paused": false,
+      "action": "buy"
+    },
+    "中证500": {
+      "multiplier": 1.0,
+      "monthly": 33.0,
+      "weekly": 16.5,
+      "paused": false,
+      "action": "buy"
+    },
+    "标普500": {
+      "multiplier": 0.0,
+      "monthly": 0.0,
+      "weekly": 0.0,
+      "paused": true,
+      "action": "premium_block"
+    },
+    "纳斯达克100": {
+      "multiplier": 0.0,
+      "monthly": 0.0,
+      "weekly": 0.0,
+      "paused": true,
+      "action": "reference"
+    }
+  },
+  "build": {
+    "沪深300": {
+      "active": true,
+      "fraction": 0.25,
+      "tier_label": "宽松观测仓",
+      "action": "bootstrap"
+    },
+    "中证500": {
+      "active": true,
+      "fraction": 0.25,
+      "tier_label": "宽松观测仓",
+      "action": "bootstrap"
+    },
+    "标普500": {
+      "active": false,
+      "fraction": 0.0,
+      "tier_label": "不可买",
+      "action": "none"
+    }
+  },
+  "dca_month": {
+    "year_month": "2026-07",
+    "spent": 0.0,
+    "planned_monthly": 300.0
+  },
+  "updated_at": "2026-07-17T17:38:28+08:00"
+}

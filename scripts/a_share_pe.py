@@ -2,6 +2,11 @@
 
 Used by both local checks and the scheduled market snapshot job so README /
 email / build_plan share one data path.
+
+Each call hits live AKShare (CSIndex + Legu history) and recomputes the rolling
+percentile from the full PE series — `data/market_snapshot.json` is only the
+persisted result of that live calculation, never a substitute data source for
+trading decisions.
 """
 
 from __future__ import annotations

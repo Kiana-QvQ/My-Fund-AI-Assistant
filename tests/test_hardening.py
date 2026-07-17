@@ -204,14 +204,15 @@ class HolidayMergeAndReadmeE2ETests(unittest.TestCase):
         with patch.object(email_mod, "holdings_cost", return_value={}), patch.object(
             email_mod, "building_principal", return_value=10000.0
         ):
-            email_data = email_mod.collect_signals(snapshot, 300.0, policy)
+            dca_lines = email_mod.collect_dca(snapshot, policy)
         tone, notes = readme_mod.summarize_equity(
             SAMPLE_INDEXES, holdings_cost={}, principal=10000.0
         )
         self.assertIn("溢价", tone)
-        self.assertTrue(any("溢价过高" in row for row in email_data["rows"]))
+        spx = next(ln for ln in dca_lines if ln["name"] == "标普500")
+        self.assertEqual(spx["action"], "premium_block")
         self.assertTrue(any("溢价" in n for n in notes))
-        self.assertFalse(email_data["has_buy"])
+        self.assertTrue(spx["paused"])
 
 
 class LedgerIdempotencyAndSetAuditTests(unittest.TestCase):

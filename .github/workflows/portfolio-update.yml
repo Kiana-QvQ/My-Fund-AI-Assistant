@@ -4,16 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       alert_mode:
-        description: "Email: morning / evening / force(有操作时) / skip / auto(=morning)"
+        description: "Email: auto / weekly_dca / event / force_dca / force_build / skip"
         required: false
         default: auto
   schedule:
-    # ~09:00 CST: refresh + morning email (今日15:00前操作，含QDII)
-    # ~21:00 CST: refresh + evening email (下一交易日15:00前操作，A股收盘信号)
-    # GitHub cron is best-effort, not minute-accurate.
-    # A-share holidays: still refresh US PE / README (no email).
+    # ~09:00 CST Mon–Fri: refresh + event emails; Thursday also sends weekly DCA plan
+    # GitHub cron is best-effort. A-share holidays still allow fresh US/event alerts.
     - cron: "0 1 * * 1-5"
-    - cron: "0 13 * * 1-5"
 
 permissions:
   contents: write
@@ -53,7 +50,6 @@ jobs:
             echo "Manual run: full refresh enabled"
           else
             python scripts/trading_calendar.py --github-output
-            # Weekday schedule always refreshes US valuation even on A-share holidays.
             echo "run_us=yes" >> "$GITHUB_OUTPUT"
           fi
 
@@ -65,18 +61,11 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             MODE="${{ github.event.inputs.alert_mode }}"
             MODE="${MODE:-auto}"
-            case "${MODE}" in
-              auto) MODE="morning" ;;
-            esac
           else
-            case "${{ github.event.schedule }}" in
-              "0 1 * * 1-5") MODE="morning" ;;
-              "0 13 * * 1-5") MODE="evening" ;;
-              *) MODE="morning" ;;
-            esac
-            # No action email on A-share holidays (US-only refresh path).
+            MODE="auto"
             if [ "${{ steps.gate.outputs.run }}" != "yes" ]; then
-              MODE="skip"
+              # A股休市：仍发动态事件信（溢价/建仓/美股档位），不发周四定投周报
+              MODE="event"
             fi
           fi
           echo "value=${MODE}" >> "$GITHUB_OUTPUT"
@@ -97,6 +86,7 @@ jobs:
           sys.path.insert(0, "scripts")
           from us_pe import merge_us_into_market_snapshot
           from index_drawdown import attach_drawdowns
+          from qdii_premium import fetch_qdii_premiums
           root = Path(".")
           snap_path = root / "data" / "market_snapshot.json"
           us_path = root / "config" / "us_pe_snapshot.json"
@@ -104,6 +94,16 @@ jobs:
               snap = json.loads(snap_path.read_text(encoding="utf-8"))
               us = json.loads(us_path.read_text(encoding="utf-8"))
               merged = merge_us_into_market_snapshot(snap, us)
+              premiums = fetch_qdii_premiums()
+              for name, item in premiums.items():
+                  if name in merged.setdefault("indexes", {}):
+                      merged["indexes"][name].update({
+                          "qdii_premium": item.get("premium"),
+                          "qdii_premium_pct": item.get("premium_pct"),
+                          "qdii_etf": item.get("etf_code"),
+                          "qdii_premium_status": item.get("status"),
+                          "qdii_premium_reason": item.get("reason"),
+                      })
               attach_drawdowns(merged.setdefault("indexes", {}))
               snap_path.write_text(
                   json.dumps(merged, ensure_ascii=False, indent=2) + "\n",
@@ -123,15 +123,16 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -f README.md data/market_snapshot.json data/portfolio_status.json
           git add -f config/us_pe_snapshot.json data/sp500_pe_multpl.json
+          git add -f data/alert_state.json || true
           if [ -f data/ndx_pe_yfinance_ref.json ]; then
             git add -f data/ndx_pe_yfinance_ref.json
           fi
           git diff --cached --quiet || git commit -m "自动更新持仓与今日投资判断"
           git push
 
-      - name: Send trade alert email
+      - name: Send DCA / build alert emails
         id: email
-        if: steps.gate.outputs.run == 'yes' && steps.mode.outputs.value != 'skip'
+        if: (steps.gate.outputs.run == 'yes' || steps.gate.outputs.run_us == 'yes') && steps.mode.outputs.value != 'skip'
         env:
           ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
@@ -139,33 +140,21 @@ jobs:
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
           MAIL_FROM: ${{ secrets.MAIL_FROM }}
-          MONTHLY_BUDGET: ${{ secrets.MONTHLY_BUDGET }}
         run: |
-          if [ -z "${MONTHLY_BUDGET}" ]; then
-            unset MONTHLY_BUDGET
-            BUDGET=300
-          else
-            BUDGET="${MONTHLY_BUDGET}"
-          fi
           MODE="${{ steps.mode.outputs.value }}"
-          EXTRA=""
-          SLOT="morning"
           case "${MODE}" in
-            evening) SLOT="evening" ;;
-            morning) SLOT="morning" ;;
-            force) SLOT="morning"; EXTRA="--force" ;;
-            *) SLOT="morning" ;;
+            weekly_dca) python scripts/send_trade_alert_email.py --mode weekly_dca --persist-state ;;
+            event) python scripts/send_trade_alert_email.py --mode event --persist-state ;;
+            force_dca) python scripts/send_trade_alert_email.py --mode force_dca --persist-state ;;
+            force_build) python scripts/send_trade_alert_email.py --mode force_build --persist-state ;;
+            *) python scripts/send_trade_alert_email.py --mode auto --persist-state ;;
           esac
-          python scripts/send_trade_alert_email.py --monthly "${BUDGET}" --slot "${SLOT}" ${EXTRA}
-
-      - name: Commit trade-alert log
-        if: steps.gate.outputs.run == 'yes' && steps.mode.outputs.value != 'skip'
-        run: |
+          # Persist fingerprint even when no mail body change beyond state file
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if [ -f data/trade_alert_log.json ]; then
-            git add -f data/trade_alert_log.json
-            git diff --cached --quiet || git commit -m "记录本月定投提醒发送次数"
+          if [ -f data/alert_state.json ]; then
+            git add -f data/alert_state.json
+            git diff --cached --quiet || git commit -m "更新定投/建仓邮件状态指纹"
             git push || true
           fi
 
@@ -175,7 +164,7 @@ jobs:
 
       - name: Holiday US-only notice
         if: steps.gate.outputs.run != 'yes' && steps.gate.outputs.run_us == 'yes'
-        run: echo "今天不是 A 股交易日：已刷新美股估值与 README，跳过邮件。"
+        run: echo "今天不是 A 股交易日：已刷新美股估值与 README；可发送动态事件邮件（无定投周报）。"
 
       - name: Failure notice
         if: failure()
@@ -184,8 +173,8 @@ jobs:
           {
             echo "### 工作流失败"
             echo ""
-            echo "- 定时任务计划约 **09:00（上午操作提醒）/ 21:00（晚间A股信号）CST**，GitHub 可能延迟启动。"
-            echo "- 若上午需要招行操作：约 **10:00 CST** 前请到 Actions 确认 morning run 是否成功。"
-            echo "- 失败不等于「今天无信号」；请查看上方失败 step 与 SMTP/交易日历 Summary。"
+            echo "- 计划约 **每周四 09:00 CST** 发定投周报；工作日同一时刻检测档位/建仓事件。"
+            echo "- 周四若需招行操作：约 **10:00 CST** 前请到 Actions 确认 run 是否成功。"
+            echo "- 失败不等于「今天无信号」。"
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "Workflow failed — see job Summary. Cron times are best-effort, not minute-accurate."
+          echo "Workflow failed — see job Summary."

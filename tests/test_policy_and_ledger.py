@@ -264,11 +264,11 @@ class EmailAndReadmeSignalTests(unittest.TestCase):
         with patch.object(email_mod, "holdings_cost", return_value={}), patch.object(
             email_mod, "building_principal", return_value=10000.0
         ):
-            data = email_mod.collect_signals(snapshot, 300.0, policy)
-        spx_row = next(r for r in data["rows"] if r.startswith("- 标普500"))
-        self.assertIn("溢价 3.00%", spx_row)
-        self.assertIn("溢价过高", spx_row)
-        self.assertNotIn("050025", "".join(data["buy_lines"]))
+            lines = email_mod.collect_dca(snapshot, policy)
+        spx = next(ln for ln in lines if ln["name"] == "标普500")
+        self.assertTrue(spx["paused"])
+        self.assertEqual(spx["action"], "premium_block")
+        self.assertIn("溢价", spx["reason"])
 
         tone, notes = readme_mod.summarize_equity(
             snapshot["indexes"],
@@ -289,8 +289,12 @@ class WorkflowHolidayBranchTests(unittest.TestCase):
         self.assertIn("steps.gate.outputs.run != 'yes' && steps.gate.outputs.run_us == 'yes'", text)
         self.assertIn("python -m compileall -q app scripts tests", text)
         self.assertIn("python -m unittest discover -s tests -v", text)
-        # Email stays off on holiday / US-only path.
-        self.assertIn("steps.gate.outputs.run == 'yes' && steps.mode.outputs.value != 'skip'", text)
+        # Holiday path still allows event emails (mode=event), not skip.
+        self.assertIn('MODE="event"', text)
+        self.assertIn(
+            "(steps.gate.outputs.run == 'yes' || steps.gate.outputs.run_us == 'yes') && steps.mode.outputs.value != 'skip'",
+            text,
+        )
 
 
 if __name__ == "__main__":

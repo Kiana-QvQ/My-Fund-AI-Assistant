@@ -239,6 +239,7 @@ def apply_buy(
     amount: float,
     note: str | None,
     *,
+    purpose: str | None = None,
     shares: float | None = None,
     nav: float | None = None,
     transaction_id: str | None = None,
@@ -281,6 +282,11 @@ def apply_buy(
         "shares": buy_shares,
         "nav": nav,
         "note": note,
+        "purpose": purpose or (
+            "dca"
+            if note and ("定投" in note or "dca" in note.lower())
+            else "other"
+        ),
     }
     tx_id, idem_key = _prepare_tx_ids(
         doc,
@@ -545,6 +551,12 @@ def main() -> None:
         ),
     )
     buy.add_argument("--note", default=None)
+    buy.add_argument(
+        "--purpose",
+        choices=("dca", "build", "other"),
+        default=None,
+        help="资金用途，用于按实际成交统计定投预算",
+    )
     _add_common_tx_args(buy)
 
     sell = sub.add_parser(
@@ -590,6 +602,7 @@ def main() -> None:
             args.fund,
             args.amount,
             args.note,
+            purpose=args.purpose,
             shares=args.shares,
             nav=args.nav,
             **tx_kwargs,

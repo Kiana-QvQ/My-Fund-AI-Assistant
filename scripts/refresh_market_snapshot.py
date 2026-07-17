@@ -285,8 +285,9 @@ def action_for(
         "buy",
         "triple",
         "double",
-        "sesqui",
-        "light",
+        "boost_150",
+        "seventy",
+        "three_quarter",
         "half",
         "bootstrap",
         "premium_block",
@@ -334,34 +335,36 @@ def build_plan(
             if action == "take_profit":
                 take_profit_notes.append(reason)
             planned = 0.0
-        elif action in ("triple", "double", "sesqui", "buy", "light", "half"):
-            frac = allocation_fraction(action, policy)
-            planned = round(base * frac, 2)
-            if planned > base:
-                double_extra += planned - base
-                reason = f"{reason}；超额部分从短债底仓调拨"
-            elif planned < base:
-                held_back += base - planned
-                reason = f"{reason}；未用额度转入短债/备用金"
+        elif action == "triple":
+            planned = base * allocation_fraction("triple", policy)
+            double_extra += planned - base
+            reason = f"{reason}；超额部分从短债底仓调拨"
+        elif action == "double":
+            planned = base * allocation_fraction("double", policy)
+            double_extra += planned - base
+            reason = f"{reason}；加倍部分从短债底仓调拨"
+        elif action == "boost_150":
+            planned = round(base * allocation_fraction("boost_150", policy), 2)
+            double_extra += planned - base
+            reason = f"{reason}；超额部分从短债底仓调拨"
+        elif action == "three_quarter":
+            planned = round(base * 0.75, 2)
+            held_back += max(base - planned, 0.0)
+            reason = f"{reason}；未用额度转入短债/备用金"
+        elif action == "seventy":
+            planned = round(base * allocation_fraction("seventy", policy), 2)
+            held_back += max(base - planned, 0.0)
+            reason = f"{reason}；未用额度转入短债/备用金"
+        elif action == "half":
+            planned = round(base * allocation_fraction("half", policy), 2)
+            held_back += max(base - planned, 0.0)
+            reason = f"{reason}；未用额度转入短债/备用金"
         elif action == "bootstrap":
-            remaining = bootstrap_remaining(held, target_amount, policy)
-            planned = bootstrap_planned_amount(
-                held, target_amount, policy, month_slice=base, fraction=0.25
-            )
-            if planned <= 0:
-                held_back += base
-                planned = 0.0
-                action = "wait"
-                reason = f"{reason}；1年建仓额度已用尽"
-            else:
-                bootstrap_notes.append(
-                    f"{item['name']} 1年档约 {planned:.2f} 元（剩余额度 {remaining:.2f}）"
-                )
-                if base > planned:
-                    held_back += base - planned
-                elif planned > base:
-                    double_extra += planned - base
-                    reason = f"{reason}；超出首月份额部分从短债调拨"
+            planned = round(base * 0.25, 2)
+            held_back += max(base - planned, 0.0)
+            reason = f"{reason}；未用额度转入短债/备用金"
+        elif action == "buy":
+            planned = base
         allocations.append(
             {
                 "fund_code": item["fund_code"],
