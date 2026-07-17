@@ -8,9 +8,9 @@ on:
         required: false
         default: auto
   schedule:
-    # 09:00 CST: refresh + action email if buy/take-profit signal.
-    # 21:00 CST: refresh dashboard only, no email.
-    # Skips A-share holidays via trading calendar check.
+    # 09:00 CST: full refresh + action email if signal (A-share trading days).
+    # 21:00 CST: full refresh only, no email (A-share trading days).
+    # A-share holidays: still refresh US PE / README (no A-share fund scrape / no email).
     - cron: "0 1 * * 1-5"
     - cron: "0 13 * * 1-5"
 
@@ -38,14 +38,17 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "run=yes" >> "$GITHUB_OUTPUT"
-            echo "Manual run: skip holiday gate"
+            echo "run_us=yes" >> "$GITHUB_OUTPUT"
+            echo "Manual run: full refresh enabled"
           else
             python scripts/trading_calendar.py --github-output
+            # Weekday schedule always refreshes US valuation even on A-share holidays.
+            echo "run_us=yes" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Resolve alert mode
         id: mode
-        if: steps.gate.outputs.run == 'yes'
+        if: steps.gate.outputs.run == 'yes' || steps.gate.outputs.run_us == 'yes'
         shell: bash
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
@@ -57,20 +60,62 @@ jobs:
               "0 13 * * 1-5") MODE="skip" ;;
               *) MODE="auto" ;;
             esac
+            # No action email on A-share holidays (US-only refresh path).
+            if [ "${{ steps.gate.outputs.run }}" != "yes" ]; then
+              MODE="skip"
+            fi
           fi
           echo "value=${MODE}" >> "$GITHUB_OUTPUT"
           echo "Alert mode: ${MODE}"
 
-      - name: Refresh market snapshot
+      - name: Refresh market snapshot (A-share trading day)
         if: steps.gate.outputs.run == 'yes'
         run: python scripts/refresh_market_snapshot.py --principal 10000
 
+      - name: Refresh US valuation only (A-share holiday)
+        if: steps.gate.outputs.run != 'yes' && steps.gate.outputs.run_us == 'yes'
+        run: |
+          python scripts/us_pe.py
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path(".")
+          snap_path = root / "data" / "market_snapshot.json"
+          us_path = root / "config" / "us_pe_snapshot.json"
+          if snap_path.is_file() and us_path.is_file():
+              snap = json.loads(snap_path.read_text(encoding="utf-8"))
+              us = json.loads(us_path.read_text(encoding="utf-8"))
+              for name, item in us.get("indexes", {}).items():
+                  prev = snap.setdefault("indexes", {}).get(name, {})
+                  merged = {**prev, **item}
+                  for key in (
+                      "qdii_premium",
+                      "qdii_premium_pct",
+                      "qdii_etf",
+                      "qdii_premium_status",
+                      "qdii_premium_reason",
+                  ):
+                      if key in prev and key not in item:
+                          merged[key] = prev[key]
+                  snap["indexes"][name] = merged
+              snap["us_meta"] = {
+                  "us_decision_blocked": us.get("us_decision_blocked", True),
+                  "nasdaq_buy_blocked": us.get("nasdaq_buy_blocked", True),
+                  "alerts": us.get("alerts", []),
+              }
+              snap_path.write_text(
+                  json.dumps(snap, ensure_ascii=False, indent=2) + "\n",
+                  encoding="utf-8",
+              )
+              print("merged US valuation into market_snapshot.json")
+          PY
+
       - name: Update README dashboard
-        if: steps.gate.outputs.run == 'yes'
+        if: steps.gate.outputs.run == 'yes' || steps.gate.outputs.run_us == 'yes'
         run: python scripts/update_portfolio_readme.py
 
       - name: Commit dashboard changes
-        if: steps.gate.outputs.run == 'yes'
+        if: steps.gate.outputs.run == 'yes' || steps.gate.outputs.run_us == 'yes'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -83,8 +128,8 @@ jobs:
           git push
 
       - name: Send trade alert email
+        id: email
         if: steps.gate.outputs.run == 'yes' && steps.mode.outputs.value != 'skip'
-        continue-on-error: true
         env:
           ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
@@ -107,5 +152,9 @@ jobs:
           python scripts/send_trade_alert_email.py --monthly "${BUDGET}" ${EXTRA}
 
       - name: Skip notice
-        if: steps.gate.outputs.run != 'yes'
-        run: echo "今天不是 A 股交易日，已跳过定时刷新。"
+        if: steps.gate.outputs.run != 'yes' && steps.gate.outputs.run_us != 'yes'
+        run: echo "已跳过刷新。"
+
+      - name: Holiday US-only notice
+        if: steps.gate.outputs.run != 'yes' && steps.gate.outputs.run_us == 'yes'
+        run: echo "今天不是 A 股交易日：已刷新美股估值与 README，跳过邮件。"

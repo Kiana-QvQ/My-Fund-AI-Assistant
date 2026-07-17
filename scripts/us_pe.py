@@ -376,12 +376,30 @@ def _nasdaq_reference_item() -> dict:
         }
         _write_json(history_path, hist_payload)
 
-        # Always publish numeric percentiles from available samples (even 1 point).
-        window_10y = _window_values(points, _today(), years=10) or [pe]
-        window_1y = _window_values(points, _today(), years=1) or [pe]
-        percentile = round(_percentile(window_10y, pe), 2)
-        percentile_1y = round(_percentile(window_1y, pe), 2)
+        # Publish percentiles only when sample count is meaningful.
+        window_10y = _window_values(points, _today(), years=10)
+        window_1y = _window_values(points, _today(), years=1)
+        min_10y = 30
+        min_1y = 20
+        percentile = (
+            round(_percentile(window_10y, pe), 2)
+            if len(window_10y) >= min_10y
+            else None
+        )
+        percentile_1y = (
+            round(_percentile(window_1y, pe), 2) if len(window_1y) >= min_1y else None
+        )
         stale_note = "（缓存回退）" if stale else ""
+        pct_10_text = (
+            f"近10年参考分位 {percentile:.2f}%（样本 {len(window_10y)}）"
+            if percentile is not None
+            else f"近10年无统计分位（样本 {len(window_10y)}<{min_10y}）"
+        )
+        pct_1_text = (
+            f"近1年参考分位 {percentile_1y:.2f}%（样本 {len(window_1y)}）"
+            if percentile_1y is not None
+            else f"近1年无统计分位（样本 {len(window_1y)}<{min_1y}）"
+        )
         return {
             "pe_ttm": pe,
             "pe_percentile": percentile,
@@ -397,9 +415,7 @@ def _nasdaq_reference_item() -> dict:
             "history_points": len(window_10y),
             "history_points_1y": len(window_1y),
             "reason": (
-                f"参考：QQQ PE={pe:.2f}{stale_note}，"
-                f"近10年参考分位 {percentile:.2f}%（样本 {len(window_10y)}），"
-                f"近1年参考分位 {percentile_1y:.2f}%（样本 {len(window_1y)}）；"
+                f"参考：QQQ PE={pe:.2f}{stale_note}，{pct_10_text}，{pct_1_text}；"
                 "ETF估值≠指数PE，未核验，禁止自动买入"
             ),
             "validation_errors": ["纳斯达克100仅展示参考估值，不参与自动买卖"],

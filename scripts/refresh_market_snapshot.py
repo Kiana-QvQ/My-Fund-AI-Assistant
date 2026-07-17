@@ -271,11 +271,18 @@ def action_for(
     )
     if signal == "take_profit":
         if held <= 0:
-            return "wait", f"{reason}；账本暂无该基金持仓，仅观察"
+            return "overvalued_watch", "高估观察，当前无持仓无需止盈"
         low = round(held / 3, 2)
         high = round(held / 2, 2)
         return "take_profit", f"{reason}；建议赎回约 {low:.2f}~{high:.2f} 元"
-    if signal in ("buy", "double", "bootstrap", "premium_block", "reference"):
+    if signal in (
+        "buy",
+        "double",
+        "bootstrap",
+        "premium_block",
+        "reference",
+        "overvalued_watch",
+    ):
         return signal, reason
     return "wait", reason
 
@@ -304,7 +311,14 @@ def build_plan(
         planned = base
         held = float(holdings_cost.get(item["fund_code"], 0) or 0)
         target_amount = float(principal) * float(item["target"])
-        if action in ("wait", "take_profit", "premium_block", "unknown", "reference"):
+        if action in (
+            "wait",
+            "take_profit",
+            "premium_block",
+            "unknown",
+            "reference",
+            "overvalued_watch",
+        ):
             held_back += base
             if action == "take_profit":
                 take_profit_notes.append(reason)

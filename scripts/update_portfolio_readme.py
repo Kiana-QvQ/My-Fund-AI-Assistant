@@ -87,6 +87,8 @@ def summarize_equity(indexes: dict, holdings_cost: dict[str, float], principal: 
             target_amount=principal * weight,
         )
         label = decision_label(action)
+        if action == "overvalued_watch":
+            label = "高估观察，当前无持仓无需止盈"
         premium_pct = item.get("qdii_premium_pct")
         pct_1y = item.get("pe_percentile_1y")
         suffix = (
@@ -96,6 +98,10 @@ def summarize_equity(indexes: dict, holdings_cost: dict[str, float], principal: 
         )
         if isinstance(pct_1y, (int, float)):
             suffix += f"，1年分位{pct_1y:.1f}%"
+        elif name != "纳斯达克100" and item.get("reference_only"):
+            pass
+        elif name == "纳斯达克100" and pct_1y is None:
+            suffix += "，1年分位无统计"
         notes.append(f"{name}：{label}{suffix}")
         if action == "bootstrap":
             bootstrap.append(name)
@@ -107,9 +113,8 @@ def summarize_equity(indexes: dict, holdings_cost: dict[str, float], principal: 
             blocked.append(name)
         elif action == "unknown":
             missing.append(name)
-        elif action == "reference":
-            paused.append(name)
         else:
+            # reference / wait / overvalued_watch
             paused.append(name)
     if buyable or bootstrap:
         tone = "🟢 权益有可买/启动仓信号"
@@ -120,7 +125,7 @@ def summarize_equity(indexes: dict, holdings_cost: dict[str, float], principal: 
     elif missing and not paused:
         tone = "⚪ 权益数据不足"
     else:
-        tone = "🟡 权益均暂停新增"
+        tone = "🟡 权益均暂停新增/高估观察"
     return tone, notes
 
 
@@ -375,22 +380,35 @@ def render(status: dict) -> str:
             target_amount=principal * weight,
         )
         pe_text = f"{pe:.2f}" if isinstance(pe, (int, float)) else "-"
-        percentile_text = (
-            f"{percentile:.2f}%" if isinstance(percentile, (int, float)) else "-"
-        )
-        percentile_1y_text = (
-            f"{percentile_1y:.2f}%"
-            if isinstance(percentile_1y, (int, float))
-            else "-"
-        )
         if name == "纳斯达克100" or index.get("reference_only"):
+            percentile_text = (
+                f"{percentile:.2f}%"
+                if isinstance(percentile, (int, float))
+                else "无统计分位"
+            )
+            percentile_1y_text = (
+                f"{percentile_1y:.2f}%"
+                if isinstance(percentile_1y, (int, float))
+                else "无统计分位"
+            )
             if not data_date or data_date == "待核验":
                 data_date = index.get("date") or status.get("as_of") or "-"
             if isinstance(premium_pct, (int, float)):
                 premium_text = f"{premium_pct:.2f}%"
+        else:
+            percentile_text = (
+                f"{percentile:.2f}%" if isinstance(percentile, (int, float)) else "-"
+            )
+            percentile_1y_text = (
+                f"{percentile_1y:.2f}%"
+                if isinstance(percentile_1y, (int, float))
+                else "-"
+            )
         decision = decision_label(action)
         if action == "reference" or name == "纳斯达克100":
             decision = "仅参考·不自动买"
+        elif action == "overvalued_watch":
+            decision = "高估观察，当前无持仓无需止盈"
         elif action == "unknown":
             if index.get("verified") is not True:
                 decision = "未核验/校验失败，禁止自动买入"
@@ -406,8 +424,8 @@ def render(status: dict) -> str:
             "",
             "> A股近10年分位为主策略；近1年分位用于启动仓（≤30%且未满目标仓15%可先建小仓）。"
             "标普用 Multpl 指数PE，四层校验通过才可交易判断。"
-            "纳指数值来自 QQQ PE（stockanalysis/yfinance）**仅供参考**（ETF≠指数PE），"
-            "今日判断固定为「仅参考·不自动买」。"
+            "纳指 PE 来自 QQQ（stockanalysis/yfinance）**仅供参考**；样本不足时分位显示「无统计分位」。"
+            "无持仓时高估只观察、不提示止盈。"
             "爬虫失败严禁用过期缓存做买卖。QDII溢价＞2%暂缓买入。"
             "1万元本金启动仓上限约：沪深300 405 / 中证500 165 / 标普500 120 元。",
         ]

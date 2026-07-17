@@ -151,9 +151,12 @@ def collect_signals(snapshot: dict, monthly: float, policy: dict) -> dict:
         else:
             amount = month_slice
         pe_text = f"{pe:.2f}" if isinstance(pe, (int, float)) else "-"
-        pct_text = f"{pct:.2f}%" if isinstance(pct, (int, float)) else "-"
-        pct_1y_text = f"{pct_1y:.2f}%" if isinstance(pct_1y, (int, float)) else "-"
-        premium_text = (
+        pct_text = f"{pct:.2f}%" if isinstance(pct, (int, float)) else (
+            "无统计分位" if name == "纳斯达克100" else "-"
+        )
+        pct_1y_text = f"{pct_1y:.2f}%" if isinstance(pct_1y, (int, float)) else (
+            "无统计分位" if name == "纳斯达克100" else "-"
+        )        premium_text = (
             f"{item.get('qdii_premium_pct'):.2f}%"
             if isinstance(item.get("qdii_premium_pct"), (int, float))
             else "-"
@@ -333,8 +336,10 @@ A股可买：{a_text}
 
 【执行提醒】
 1. 以招行 APP 实际申购/赎回状态为准。
-2. 买入后：python scripts/record_holding.py buy --fund 代码 --amount 金额
-3. 仅研究提醒，不构成投资建议，不会自动下单。
+2. 买入：python scripts/record_holding.py buy --fund 代码 --amount 金额 [--nav 净值]
+3. 卖出：python scripts/record_holding.py sell --fund 代码 --proceeds 市值 --cost 成本
+   或 --proceeds 市值 --shares 份额（按持仓比例扣成本）
+4. 仅研究提醒，不构成投资建议，不会自动下单。
 
 — My Fund AI Assistant
 """
@@ -374,7 +379,23 @@ def require_mail_config() -> dict[str, str]:
     }
 
 
-def send_email(subject: str, body: str, dry_run: bool = False) -> None:
+def _write_github_summary(markdown: str) -> None:
+    summary = os.environ.get("GITHUB_STEP_SUMMARY", "").strip()
+    if not summary:
+        return
+    with open(summary, "a", encoding="utf-8") as handle:
+        handle.write(markdown)
+        if not markdown.endswith("\n"):
+            handle.write("\n")
+
+
+def send_email(
+    subject: str,
+    body: str,
+    dry_run: bool = False,
+    *,
+    retries: int = 2,
+) -> None:
     if dry_run:
         to_addr = os.environ.get("ALERT_EMAIL", "").strip() or "unset@example.com"
         print(f"准备发送至 {mask_email(to_addr)} | subject={subject}")
@@ -394,18 +415,42 @@ def send_email(subject: str, body: str, dry_run: bool = False) -> None:
 
     context = ssl.create_default_context()
     port = int(cfg["port"])
-    if port == 465:
-        with smtplib.SMTP_SSL(cfg["host"], port, context=context) as server:
-            server.login(cfg["user"], cfg["password"])
-            server.sendmail(cfg["from"], [cfg["to"]], msg.as_string())
-    else:
-        with smtplib.SMTP(cfg["host"], port, timeout=60) as server:
-            server.ehlo()
-            server.starttls(context=context)
-            server.ehlo()
-            server.login(cfg["user"], cfg["password"])
-            server.sendmail(cfg["from"], [cfg["to"]], msg.as_string())
-    print(f"已发送至 {masked}")
+    last_error: Exception | None = None
+    attempts = max(1, retries + 1)
+    for attempt in range(1, attempts + 1):
+        try:
+            if port == 465:
+                with smtplib.SMTP_SSL(cfg["host"], port, context=context) as server:
+                    server.login(cfg["user"], cfg["password"])
+                    server.sendmail(cfg["from"], [cfg["to"]], msg.as_string())
+            else:
+                with smtplib.SMTP(cfg["host"], port, timeout=60) as server:
+                    server.ehlo()
+                    server.starttls(context=context)
+                    server.ehlo()
+                    server.login(cfg["user"], cfg["password"])
+                    server.sendmail(cfg["from"], [cfg["to"]], msg.as_string())
+            print(f"已发送至 {masked}（第 {attempt} 次尝试）")
+            _write_github_summary(
+                f"### 邮件发送成功\n\n- 收件人: `{masked}`\n- 主题: {subject}\n"
+            )
+            return
+        except Exception as exc:
+            last_error = exc
+            print(f"邮件发送失败（第 {attempt}/{attempts} 次）: {exc}", file=sys.stderr)
+            if attempt < attempts:
+                import time
+
+                time.sleep(2 * attempt)
+
+    _write_github_summary(
+        "### 邮件发送失败\n\n"
+        f"- 收件人: `{masked}`\n"
+        f"- 主题: {subject}\n"
+        f"- 错误: `{last_error}`\n"
+        "- 工作流将标记为失败，请检查 SMTP Secrets。\n"
+    )
+    raise SystemExit(f"邮件发送失败（已重试 {attempts} 次）: {last_error}")
 
 
 def main() -> None:

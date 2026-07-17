@@ -1,6 +1,6 @@
 {
   "as_of": "2026-07-17",
-  "updated_at": "2026-07-17T11:57:05+08:00",
+  "updated_at": "2026-07-17T12:02:33+08:00",
   "window": "标普：Multpl近10年；纳指：QQQ参考(未核验)",
   "source": "multpl.com S&P 500 PE (current + monthly history) + local percentile; NDX QQQ PE via stockanalysis/yfinance reference-only",
   "indexes": {
@@ -20,14 +20,14 @@
       "history_points_1y": 12,
       "history_from_cache": true,
       "current_timestamp": "4:00 PM EDT, Thu Jul 16",
-      "fetched_at": "2026-07-17T11:57:05+08:00",
+      "fetched_at": "2026-07-17T12:02:32+08:00",
       "reason": "Multpl 指数PE=32.41，近10年分位 93.33% （样本 120），近1年分位 100.00%（月度序列来自缓存）",
       "validation_errors": []
     },
     "纳斯达克100": {
       "pe_ttm": 32.54,
-      "pe_percentile": 100.0,
-      "pe_percentile_1y": 100.0,
+      "pe_percentile": null,
+      "pe_percentile_1y": null,
       "verified": false,
       "status": "reference_only",
       "tradeable": false,
@@ -38,7 +38,7 @@
       "source": "stockanalysis.com/etf/qqq PE Ratio",
       "history_points": 1,
       "history_points_1y": 1,
-      "reason": "参考：QQQ PE=32.54，近10年参考分位 100.00%（样本 1），近1年参考分位 100.00%（样本 1）；ETF估值≠指数PE，未核验，禁止自动买入",
+      "reason": "参考：QQQ PE=32.54，近10年无统计分位（样本 1<30），近1年无统计分位（样本 1<20）；ETF估值≠指数PE，未核验，禁止自动买入",
       "validation_errors": [
         "纳斯达克100仅展示参考估值，不参与自动买卖"
       ]

@@ -221,7 +221,9 @@ def resolve_action(
     )
     if primary in ("buy", "double", "reference"):
         return primary, reason
-    if primary == "take_profit" and float(held_cost or 0) > 0:
+
+    held = float(held_cost or 0)
+    if primary == "take_profit" and held > 0:
         return primary, reason
 
     boot = try_bootstrap_action(
@@ -231,11 +233,18 @@ def resolve_action(
         policy=policy,
         verified=verified,
         tradeable=tradeable,
-        held_cost=held_cost,
+        held_cost=held,
         target_amount=target_amount,
     )
     if boot is not None:
         return boot
+
+    # High valuation but no ledger position: observe only, never prompt to sell.
+    if primary == "take_profit" and held <= 0:
+        return (
+            "overvalued_watch",
+            "高估观察，当前无持仓无需止盈",
+        )
 
     return primary, reason
 
@@ -247,6 +256,7 @@ def decision_label(action: str) -> str:
         "bootstrap": "启动仓可建",
         "wait": "暂停新增",
         "take_profit": "建议分批止盈",
+        "overvalued_watch": "高估观察（无持仓）",
         "premium_block": "溢价过高暂缓",
         "unknown": "估值未核验/数据不足",
         "reference": "仅参考·不自动买",
