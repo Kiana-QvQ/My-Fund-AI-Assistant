@@ -79,6 +79,7 @@ def summarize_equity(indexes: dict, holdings_cost: dict[str, float], principal: 
             name,
             item.get("pe_percentile"),
             percentile_1y=item.get("pe_percentile_1y"),
+            drawdown_from_52w_high=item.get("drawdown_from_52w_high"),
             premium=item.get("qdii_premium"),
             policy=policy,
             verified=item.get("verified"),
@@ -91,6 +92,7 @@ def summarize_equity(indexes: dict, holdings_cost: dict[str, float], principal: 
             label = "高估观察，当前无持仓无需止盈"
         premium_pct = item.get("qdii_premium_pct")
         pct_1y = item.get("pe_percentile_1y")
+        dd_pct = item.get("drawdown_from_52w_high_pct")
         suffix = (
             f"，溢价{premium_pct:.2f}%"
             if isinstance(premium_pct, (int, float))
@@ -102,6 +104,8 @@ def summarize_equity(indexes: dict, holdings_cost: dict[str, float], principal: 
             pass
         elif name == "纳斯达克100" and pct_1y is None:
             suffix += "，1年分位无统计"
+        if isinstance(dd_pct, (int, float)):
+            suffix += f"，52周回撤{dd_pct:.1f}%"
         notes.append(f"{name}：{label}{suffix}")
         if action == "bootstrap":
             bootstrap.append(name)
@@ -340,8 +344,8 @@ def render(status: dict) -> str:
             "",
             "> PE 数据用于判断指数贵不贵；场外基金按当日净值成交，数据日期以指数实际更新日为准。",
             "",
-            "| 标的 | 场内代码 | 场外基金 | PE-TTM | 10年分位 | 1年分位 | QDII溢价 | 数据日期 | 今日判断 |",
-            "|---|---:|---:|---:|---:|---:|---:|---|---|",
+            "| 标的 | 场内代码 | 场外基金 | PE-TTM | 10年分位 | 1年分位 | 52周回撤 | QDII溢价 | 数据日期 | 今日判断 |",
+            "|---|---:|---:|---:|---:|---:|---:|---:|---|---|",
         ]
     )
     index_rows = (
@@ -360,18 +364,21 @@ def render(status: dict) -> str:
         percentile_1y = index.get("pe_percentile_1y")
         data_date = index.get("date", "待核验")
         premium_pct = index.get("qdii_premium_pct")
+        dd_pct = index.get("drawdown_from_52w_high_pct")
         if name in ("沪深300", "中证500"):
             premium_text = "-"
         elif isinstance(premium_pct, (int, float)):
             premium_text = f"{premium_pct:.2f}%"
         else:
             premium_text = "待核验"
+        dd_text = f"{dd_pct:.2f}%" if isinstance(dd_pct, (int, float)) else "-"
         code, weight = INDEX_WEIGHT[name]
         held = float(holdings_cost.get(code, 0) or 0)
         action, reason = resolve_action(
             name,
             percentile,
             percentile_1y=percentile_1y,
+            drawdown_from_52w_high=index.get("drawdown_from_52w_high"),
             premium=index.get("qdii_premium"),
             policy=policy,
             verified=index.get("verified"),
@@ -416,17 +423,20 @@ def render(status: dict) -> str:
                 decision = "数据不足，暂停自动买入"
         lines.append(
             f"| {name} | `{market_code}` | `{fund_code}` | {pe_text} | "
-            f"{percentile_text} | {percentile_1y_text} | {premium_text} | "
+            f"{percentile_text} | {percentile_1y_text} | {dd_text} | {premium_text} | "
             f"{data_date} | {decision} |"
         )
     lines.extend(
         [
             "",
-            "> A股近10年分位为主策略；近1年分位用于启动仓（≤30%且未满目标仓15%可先建小仓）。"
+            "> A股近10年分位为主策略（＜40%定投 / ≤30%加倍 / ≥60%止盈观察）；"
+            "近1年分位≤30% **且** 相对52周高点回撤≥10% 才可建≤目标仓15%启动仓；"
+            "回撤≥20%但十年PE仍高则只观察、不因跌幅抄底；**指数绝对点位不单独触发买入**。"
             "标普用 Multpl 指数PE，四层校验通过才可交易判断。"
             "纳指 PE 来自 QQQ（stockanalysis/yfinance）**仅供参考**；样本不足时分位显示「无统计分位」。"
             "无持仓时高估只观察、不提示止盈。"
             "爬虫失败严禁用过期缓存做买卖。QDII溢价＞2%暂缓买入。"
+            "短债012773不看PE/回撤，按建仓计划与申购状态。"
             "1万元本金启动仓上限约：沪深300 405 / 中证500 165 / 标普500 120 元。",
         ]
     )

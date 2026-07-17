@@ -43,13 +43,6 @@ Add a read-only adapter for prices, valuation percentiles, fund NAV, and QDII
 premium. Use Vibe-Trading only for data, research, paper trading, and
 backtesting. Store the raw input and timestamp with every report.
 
-The project now includes a small MCP stdio client in `app/mcp_client.py`.
-Install the optional dependencies from `requirements-mcp.txt`, then use
-`scripts/query_mcp.py` with the read-only allowlist in
-`config/mcp_servers.json`. Broker-backed position queries remain optional;
-the local `config/portfolio_holdings.json` file is the source of truth for
-manually recorded fund holdings such as `012773`.
-
 ### Phase 3: thesis and behavior review
 
 Use AI Berkshire-style thesis tracking to compare the original investment

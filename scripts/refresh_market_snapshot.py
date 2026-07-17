@@ -20,6 +20,7 @@ if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 from a_share_pe import query_pe_snapshot  # noqa: E402
+from index_drawdown import attach_drawdowns  # noqa: E402
 from policy_rules import (  # noqa: E402
     bootstrap_remaining,
     load_policy,
@@ -213,6 +214,7 @@ def index_snapshot() -> tuple[dict[str, dict], dict[str, dict], dict]:
             result[name]["qdii_etf"] = premium_item.get("etf_code")
             result[name]["qdii_premium_status"] = premium_item.get("status")
             result[name]["qdii_premium_reason"] = premium_item.get("reason")
+    attach_drawdowns(result)
     return result, premiums, us_meta
 
 
@@ -244,6 +246,7 @@ def action_for(
             index_name,
             index.get("pe_percentile"),
             percentile_1y=index.get("pe_percentile_1y"),
+            drawdown_from_52w_high=index.get("drawdown_from_52w_high"),
             premium=index.get("qdii_premium"),
             policy=policy,
             verified=index.get("verified"),
@@ -262,6 +265,7 @@ def action_for(
         index_name,
         index.get("pe_percentile"),
         percentile_1y=index.get("pe_percentile_1y"),
+        drawdown_from_52w_high=index.get("drawdown_from_52w_high"),
         premium=index.get("qdii_premium"),
         policy=policy,
         verified=index.get("verified"),

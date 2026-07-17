@@ -98,8 +98,10 @@ def collect_signals(snapshot: dict, monthly: float, policy: dict) -> dict:
     boot_cfg = policy.get("bootstrap") or {}
     boot_line = (
         f"近1年分位≤{float(boot_cfg.get('percentile_at_or_below', 30)):.0f}% "
+        f"且相对52周高点回撤≥"
+        f"{float(boot_cfg.get('require_drawdown_from_52w_high_at_or_above', 0.10)) * 100:.0f}% "
         f"且未满目标仓{float(boot_cfg.get('max_fraction_of_target', 0.15)) * 100:.0f}% "
-        f"时可建启动仓"
+        f"时可建启动仓（点位不单独触发）"
         if boot_cfg.get("enabled")
         else "启动仓未启用"
     )
@@ -127,6 +129,7 @@ def collect_signals(snapshot: dict, monthly: float, policy: dict) -> dict:
             name,
             pct,
             percentile_1y=pct_1y,
+            drawdown_from_52w_high=item.get("drawdown_from_52w_high"),
             premium=premium,
             policy=policy,
             verified=item.get("verified"),
@@ -157,6 +160,8 @@ def collect_signals(snapshot: dict, monthly: float, policy: dict) -> dict:
         pct_1y_text = f"{pct_1y:.2f}%" if isinstance(pct_1y, (int, float)) else (
             "无统计分位" if name == "纳斯达克100" else "-"
         )
+        dd = item.get("drawdown_from_52w_high_pct")
+        dd_text = f"{dd:.2f}%" if isinstance(dd, (int, float)) else "-"
         premium_text = (
             f"{item.get('qdii_premium_pct'):.2f}%"
             if isinstance(item.get("qdii_premium_pct"), (int, float))
@@ -174,7 +179,7 @@ def collect_signals(snapshot: dict, monthly: float, policy: dict) -> dict:
             verify_text = "未核验"
         rows.append(
             f"- {name}｜PE {pe_text}｜10年分位 {pct_text}｜1年分位 {pct_1y_text}｜"
-            f"溢价 {premium_text}｜{verify_text}｜{label}｜{reason}"
+            f"52周回撤 {dd_text}｜溢价 {premium_text}｜{verify_text}｜{label}｜{reason}"
         )
         if name == "标普500" and verified_flag is not True:
             spx_failed = True

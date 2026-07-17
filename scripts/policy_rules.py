@@ -1,4 +1,9 @@
-"""Shared valuation / action rules loaded from portfolio_policy.json."""
+"""Shared valuation / action rules loaded from portfolio_policy.json.
+
+Main filter: near-10y PE percentile (never buy on index level alone).
+Starter filter: near-1y PE ≤ threshold AND drawdown from 52w high ≥ floor.
+Deep drawdown with still-high PE → observe only (no dip-buying).
+"""
 
 from __future__ import annotations
 
@@ -38,7 +43,8 @@ def classify_index(
 ) -> tuple[str, str]:
     """Return (action, reason) for an index sleeve using the main 10y rules.
 
-    Actions: buy | double | wait | take_profit | premium_block | unknown
+    Actions: buy | double | wait | take_profit | premium_block | unknown | reference
+    Index absolute price/level is never used here.
     """
     r = rules(policy)
 
@@ -66,7 +72,7 @@ def classify_index(
         if percentile >= take_profit_at:
             return (
                 "take_profit",
-                f"美股分位 {percentile:.2f}% ≥ {take_profit_at:.0f}%，建议分批止盈1/3~1/2",
+                f"美股近10年分位 {percentile:.2f}% ≥ {take_profit_at:.0f}%，建议分批止盈1/3~1/2",
             )
 
         if percentile < buy_below:
@@ -78,7 +84,7 @@ def classify_index(
             if premium is not None and premium > premium_resume:
                 return (
                     "wait",
-                    f"美股分位 {percentile:.2f}% < {buy_below:.0f}% 但溢价 "
+                    f"美股近10年分位 {percentile:.2f}% < {buy_below:.0f}% 但溢价 "
                     f"{premium * 100:.2f}% 仍高于 {premium_resume * 100:.0f}%，等待回落",
                 )
             return (
@@ -103,17 +109,17 @@ def classify_index(
     buy_below = float(r.get("a_share_normal_percentile_below", 40))
     take_profit_at = float(r.get("a_share_take_profit_percentile_at_or_above", 60))
     if percentile <= double_at:
-        return "double", f"A股分位 {percentile:.2f}% ≤ {double_at:.0f}%，可研究加倍"
+        return "double", f"A股近10年分位 {percentile:.2f}% ≤ {double_at:.0f}%，可研究加倍"
     if percentile < buy_below:
-        return "buy", f"A股分位 {percentile:.2f}% < {buy_below:.0f}%，可研究定投"
+        return "buy", f"A股近10年分位 {percentile:.2f}% < {buy_below:.0f}%，可研究定投"
     if percentile >= take_profit_at:
         return (
             "take_profit",
-            f"A股分位 {percentile:.2f}% ≥ {take_profit_at:.0f}%，建议分批止盈1/3~1/2",
+            f"A股近10年分位 {percentile:.2f}% ≥ {take_profit_at:.0f}%，建议分批止盈1/3~1/2",
         )
     return (
         "wait",
-        f"A股分位 {percentile:.2f}% ≥ {buy_below:.0f}%，暂停新增",
+        f"A股近10年分位 {percentile:.2f}% ≥ {buy_below:.0f}%，暂停新增",
     )
 
 
@@ -144,10 +150,28 @@ def _bootstrap_allowed_for_index(name: str, policy: dict | None = None) -> bool:
     return True
 
 
+def _drawdown_ok_for_bootstrap(
+    drawdown: float | None,
+    policy: dict | None = None,
+) -> tuple[bool, str]:
+    cfg = bootstrap_rules(policy)
+    need = float(cfg.get("require_drawdown_from_52w_high_at_or_above", 0.10))
+    if drawdown is None:
+        return False, "缺少相对52周高点回撤，启动仓失败关闭（不以点位单独买入）"
+    if drawdown < need:
+        return (
+            False,
+            f"近1年估值偏低但回撤仅 {drawdown * 100:.2f}% < {need * 100:.0f}% "
+            f"（相对52周高点），暂不开启动仓",
+        )
+    return True, ""
+
+
 def try_bootstrap_action(
     name: str,
     *,
     percentile_1y: float | None,
+    drawdown_from_52w_high: float | None = None,
     premium: float | None = None,
     policy: dict | None = None,
     verified: bool | None = None,
@@ -155,7 +179,7 @@ def try_bootstrap_action(
     held_cost: float = 0.0,
     target_amount: float = 0.0,
 ) -> tuple[str, str] | None:
-    """Return bootstrap action if starter sleeve is eligible; else None."""
+    """Starter sleeve: 1y PE ≤ threshold AND 52w drawdown ≥ floor; else None."""
     if not _bootstrap_allowed_for_index(name, policy):
         return None
     if name in US and (verified is not True or tradeable is False):
@@ -172,6 +196,11 @@ def try_bootstrap_action(
     if percentile_1y > threshold:
         return None
 
+    ok_dd, dd_reason = _drawdown_ok_for_bootstrap(drawdown_from_52w_high, policy)
+    if not ok_dd:
+        # Surface as wait so callers see why starter was blocked.
+        return "wait", dd_reason
+
     r = rules(policy)
     premium_pause = float(r.get("qdii_premium_pause_above", 0.02))
     premium_resume = float(r.get("qdii_premium_resume_below", 0.01))
@@ -186,15 +215,46 @@ def try_bootstrap_action(
             return (
                 "wait",
                 f"启动仓：近1年分位 {percentile_1y:.2f}% ≤ {threshold:.0f}% "
+                f"且回撤 {drawdown_from_52w_high * 100:.2f}% "
                 f"但溢价 {premium * 100:.2f}% 仍高于 {premium_resume * 100:.0f}%，等待回落",
             )
 
+    need = float(cfg.get("require_drawdown_from_52w_high_at_or_above", 0.10))
     cap = bootstrap_cap(target_amount, policy)
+    assert drawdown_from_52w_high is not None
     return (
         "bootstrap",
         f"启动仓：近1年分位 {percentile_1y:.2f}% ≤ {threshold:.0f}% "
-        f"（主策略近10年未到买入线）；上限约 {cap:.0f} 元，"
-        f"本期待建约 {remaining:.0f} 元；之后仍等十年分位加仓",
+        f"且相对52周高点回撤 {drawdown_from_52w_high * 100:.2f}% ≥ {need * 100:.0f}% "
+        f"（主策略近10年未到买入线；不以指数点位单独触发）；"
+        f"上限约 {cap:.0f} 元，本期待建约 {remaining:.0f} 元；之后仍等十年分位加仓",
+    )
+
+
+def deep_drawdown_observe_reason(
+    percentile: float | None,
+    drawdown_from_52w_high: float | None,
+    policy: dict | None = None,
+) -> str | None:
+    """If PE still high but drawdown already deep → observe, do not dip-buy."""
+    if percentile is None or drawdown_from_52w_high is None:
+        return None
+    cfg = bootstrap_rules(policy)
+    deep = float(cfg.get("deep_drawdown_observe_at_or_above", 0.20))
+    if drawdown_from_52w_high < deep:
+        return None
+    r = rules(policy)
+    # "PE still high" ≈ not in the normal buy zone on the 10y window.
+    # Use A-share buy line as default for message; callers still own action.
+    buy_below = float(r.get("a_share_normal_percentile_below", 40))
+    us_buy = float(r.get("us_normal_percentile_below", 50))
+    # Generic: if percentile is at/above the tighter of pause thresholds, treat as high.
+    high_bar = min(buy_below, us_buy)
+    if percentile < high_bar:
+        return None
+    return (
+        f"相对52周高点回撤已达 {drawdown_from_52w_high * 100:.2f}% ≥ {deep * 100:.0f}%，"
+        f"但近10年PE分位 {percentile:.2f}% 仍偏高；只观察、不因跌幅盲目抄底"
     )
 
 
@@ -203,6 +263,7 @@ def resolve_action(
     percentile: float | None,
     *,
     percentile_1y: float | None = None,
+    drawdown_from_52w_high: float | None = None,
     premium: float | None = None,
     policy: dict | None = None,
     verified: bool | None = None,
@@ -210,7 +271,7 @@ def resolve_action(
     held_cost: float = 0.0,
     target_amount: float = 0.0,
 ) -> tuple[str, str]:
-    """Main 10y rules first; optional 1y starter buy when still under starter cap."""
+    """Main 10y PE first; optional 1y PE + drawdown starter; never buy on price alone."""
     primary, reason = classify_index(
         name,
         percentile,
@@ -224,27 +285,45 @@ def resolve_action(
 
     held = float(held_cost or 0)
     if primary == "take_profit" and held > 0:
+        observe = deep_drawdown_observe_reason(
+            percentile, drawdown_from_52w_high, policy
+        )
+        if observe:
+            return primary, f"{reason}；{observe}"
         return primary, reason
 
-    boot = try_bootstrap_action(
-        name,
-        percentile_1y=percentile_1y,
-        premium=premium,
-        policy=policy,
-        verified=verified,
-        tradeable=tradeable,
-        held_cost=held,
-        target_amount=target_amount,
-    )
-    if boot is not None:
-        return boot
+    # Starter only when main 10y rule is "wait" (not yet buy, not take-profit zone).
+    if primary == "wait":
+        boot = try_bootstrap_action(
+            name,
+            percentile_1y=percentile_1y,
+            drawdown_from_52w_high=drawdown_from_52w_high,
+            premium=premium,
+            policy=policy,
+            verified=verified,
+            tradeable=tradeable,
+            held_cost=held,
+            target_amount=target_amount,
+        )
+        if boot is not None:
+            return boot
 
     # High valuation but no ledger position: observe only, never prompt to sell.
     if primary == "take_profit" and held <= 0:
-        return (
-            "overvalued_watch",
-            "高估观察，当前无持仓无需止盈",
+        observe = deep_drawdown_observe_reason(
+            percentile, drawdown_from_52w_high, policy
         )
+        reason_out = "高估观察，当前无持仓无需止盈"
+        if observe:
+            reason_out = f"{reason_out}；{observe}"
+        return "overvalued_watch", reason_out
+
+    if primary == "wait":
+        observe = deep_drawdown_observe_reason(
+            percentile, drawdown_from_52w_high, policy
+        )
+        if observe:
+            return "wait", f"{reason}；{observe}"
 
     return primary, reason
 

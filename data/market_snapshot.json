@@ -75,7 +75,13 @@
       "history_count_1y": 243,
       "source": "AKShare CSIndex + Legu（近10年滚动市盈率分位）",
       "verified": true,
-      "tradeable": true
+      "tradeable": true,
+      "drawdown_from_52w_high": 0.0714,
+      "drawdown_from_52w_high_pct": 7.14,
+      "price_close": 4698.434,
+      "price_high_52w": 5059.658,
+      "drawdown_source": "akshare:stock_zh_index_daily:sh000300",
+      "drawdown_status": "ok"
     },
     "中证500": {
       "index_code": "000905",
@@ -94,7 +100,13 @@
       "history_count_1y": 243,
       "source": "AKShare CSIndex + Legu（近10年滚动市盈率分位）",
       "verified": true,
-      "tradeable": true
+      "tradeable": true,
+      "drawdown_from_52w_high": 0.1191,
+      "drawdown_from_52w_high_pct": 11.91,
+      "price_close": 7955.664,
+      "price_high_52w": 9031.379,
+      "drawdown_source": "akshare:stock_zh_index_daily:sh000905",
+      "drawdown_status": "ok"
     },
     "标普500": {
       "pe_ttm": 32.41,
@@ -119,7 +131,11 @@
       "qdii_premium_pct": 4.82,
       "qdii_etf": "513500",
       "qdii_premium_status": "ok",
-      "qdii_premium_reason": "场内513500 溢价 4.82%"
+      "qdii_premium_reason": "场内513500 溢价 4.82%",
+      "drawdown_from_52w_high": null,
+      "drawdown_from_52w_high_pct": null,
+      "drawdown_status": "fetch_failed",
+      "drawdown_reason": "akshare: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))；yfinance: Too Many Requests. Rate limited. Try after a while."
     },
     "纳斯达克100": {
       "pe_ttm": 32.54,
@@ -143,7 +159,11 @@
       "reference_only": true,
       "window_1y": "近1年 QQQ PE 参考分位",
       "history_points": 1,
-      "history_points_1y": 1
+      "history_points_1y": 1,
+      "drawdown_from_52w_high": null,
+      "drawdown_from_52w_high_pct": null,
+      "drawdown_status": "skipped",
+      "drawdown_reason": "纳指仅参考，不参与启动仓回撤过滤"
     }
   },
   "qdii_premiums": {

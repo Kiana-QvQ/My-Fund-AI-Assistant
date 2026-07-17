@@ -92,6 +92,7 @@ jobs:
           import sys
           sys.path.insert(0, "scripts")
           from us_pe import merge_us_into_market_snapshot
+          from index_drawdown import attach_drawdowns
           root = Path(".")
           snap_path = root / "data" / "market_snapshot.json"
           us_path = root / "config" / "us_pe_snapshot.json"
@@ -99,11 +100,12 @@ jobs:
               snap = json.loads(snap_path.read_text(encoding="utf-8"))
               us = json.loads(us_path.read_text(encoding="utf-8"))
               merged = merge_us_into_market_snapshot(snap, us)
+              attach_drawdowns(merged.setdefault("indexes", {}))
               snap_path.write_text(
                   json.dumps(merged, ensure_ascii=False, indent=2) + "\n",
                   encoding="utf-8",
               )
-              print("merged US valuation into market_snapshot.json")
+              print("merged US valuation + drawdowns into market_snapshot.json")
           PY
 
       - name: Update README dashboard

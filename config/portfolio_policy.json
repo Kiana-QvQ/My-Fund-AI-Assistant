@@ -26,11 +26,13 @@
     "enabled": true,
     "window_years": 1,
     "percentile_at_or_below": 30,
+    "require_drawdown_from_52w_high_at_or_above": 0.10,
+    "deep_drawdown_observe_at_or_above": 0.20,
     "max_fraction_of_target": 0.15,
     "min_amount": 10,
     "indexes": ["沪深300", "中证500", "标普500"],
     "exclude": ["纳斯达克100"],
-    "note": "权益尚无启动仓时：近1年PE分位≤30%可先建不超过目标仓15%的启动仓；之后仍按近10年分位主策略加仓。按1万元本金：沪深300≤405、中证500≤165、标普500≤120。"
+    "note": "主规则仍用近10年PE分位（A股＜40%定投/≤30%加倍/≥60%止盈观察；美股＜50%/≥70%）。启动仓辅助：近1年PE≤30% 且 相对52周高点回撤≥10% 才允许≤目标仓15%的小额启动仓；回撤≥20%但十年PE仍高则只观察不抄底。指数绝对点位不单独触发买入。短债012773不看这三项，按建仓计划与申购状态。QDII溢价＞2%一律暂缓买入。按1万元本金启动仓上限约：沪深300≤405、中证500≤165、标普500≤120。"
   },
   "guardrails": {
     "paper_or_advice_only": true,
