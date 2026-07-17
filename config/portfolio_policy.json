@@ -100,6 +100,7 @@
     "max_fraction_of_target": 0.30,
     "min_amount": 10,
     "deep_drawdown_observe_at_or_above": 0.25,
+    "confirm_trading_days": 2,
     "indexes": ["沪深300", "中证500", "标普500"],
     "exclude": ["纳斯达克100"],
     "by_index": {
@@ -110,19 +111,19 @@
             "percentile_1y_at_or_below": 50,
             "fraction": 1.0,
             "drawdown_at_or_above": 0.05,
-            "label": "正式小额底仓"
+            "label": "正式建仓 100%"
           },
           {
             "percentile_1y_at_or_below": 70,
             "fraction": 0.5,
             "drawdown_at_or_above": 0.04,
-            "label": "宽松观测仓"
+            "label": "正式小额底仓 50%"
           },
           {
             "percentile_1y_at_or_below": 90,
             "fraction": 0.25,
             "drawdown_at_or_above": 0.03,
-            "label": "宽松观测仓"
+            "label": "宽松观测仓 25%"
           }
         ]
       },
@@ -133,19 +134,19 @@
             "percentile_1y_at_or_below": 55,
             "fraction": 1.0,
             "drawdown_at_or_above": 0.06,
-            "label": "正式小额底仓"
+            "label": "正式建仓 100%"
           },
           {
             "percentile_1y_at_or_below": 75,
             "fraction": 0.5,
             "drawdown_at_or_above": 0.05,
-            "label": "宽松观测仓"
+            "label": "正式小额底仓 50%"
           },
           {
             "percentile_1y_at_or_below": 90,
             "fraction": 0.25,
             "drawdown_at_or_above": 0.04,
-            "label": "宽松观测仓"
+            "label": "宽松观测仓 25%"
           }
         ]
       },
@@ -157,24 +158,24 @@
             "percentile_1y_at_or_below": 50,
             "fraction": 1.0,
             "drawdown_at_or_above": 0.05,
-            "label": "正式小额底仓"
+            "label": "正式建仓 100%"
           },
           {
             "percentile_1y_at_or_below": 70,
             "fraction": 0.5,
             "drawdown_at_or_above": 0.04,
-            "label": "宽松观测仓"
+            "label": "正式小额底仓 50%"
           },
           {
             "percentile_1y_at_or_below": 85,
             "fraction": 0.25,
             "drawdown_at_or_above": 0.03,
-            "label": "宽松观测仓"
+            "label": "宽松观测仓 25%"
           }
         ]
       }
     },
-    "note": "建仓邮件独立、仅状态变更时发送。不与周度定投邮件合并。"
+    "note": "每日刷新；状态机触发邮件。升级/恢复默认连续2个交易日确认；溢价阻断/条件失效/止盈/数据失败立即发。买入金额与距目标进度不触发邮件。"
   },
   "guardrails": {
     "paper_or_advice_only": true,

@@ -1,4 +1,4 @@
-"""Persist last DCA/build fingerprints for event-triggered emails."""
+"""Persist last DCA fingerprints and build state machines for event emails."""
 
 from __future__ import annotations
 
@@ -12,7 +12,12 @@ STATE_PATH = ROOT / "data" / "alert_state.json"
 
 def load_alert_state(path: Path = STATE_PATH) -> dict:
     if not path.is_file():
-        return {"dca": {}, "build": {}, "updated_at": None}
+        return {
+            "dca": {},
+            "build": {},
+            "build_machines": {},
+            "updated_at": None,
+        }
     return json.loads(path.read_text(encoding="utf-8"))
 
 

@@ -22,12 +22,9 @@ from policy_rules import (
     A_SHARE,
     US,
     action_from_fraction,
-    bootstrap_planned_amount,
     bootstrap_rules,
     decision_label,
-    index_bootstrap_rules,
     load_policy,
-    try_bootstrap_action,
 )
 
 
@@ -446,66 +443,37 @@ def resolve_build_line(
     held_cost: float = 0.0,
     target_amount: float = 0.0,
     month_slice: float | None = None,
+    drawdown_status: str | None = None,
+    pe_status: str | None = None,
 ) -> dict:
-    """Independent build decision (event email only)."""
-    policy = policy or load_policy()
-    boot = try_bootstrap_action(
+    """Independent build decision (event email / state machine)."""
+    from build_state_machine import observe_build_state  # noqa: WPS433
+
+    observed = observe_build_state(
         name,
         percentile=percentile,
         percentile_1y=percentile_1y,
         drawdown_from_52w_high=drawdown_from_52w_high,
         premium=premium,
+        drawdown_status=drawdown_status,
+        pe_status=pe_status,
         policy=policy,
         verified=verified,
         tradeable=tradeable,
         held_cost=held_cost,
         target_amount=target_amount,
+        month_slice=month_slice,
     )
-    if boot is None:
-        return {
-            "name": name,
-            "active": False,
-            "action": "none",
-            "fraction": 0.0,
-            "amount": 0.0,
-            "tier_label": "不可买",
-            "reason": "未纳入建仓或条件未触发",
-        }
-    action, reason, frac = boot
-    active = action not in ("wait", "premium_block", "none") and frac > 0
-    amount = 0.0
-    if active:
-        amount = bootstrap_planned_amount(
-            held_cost,
-            target_amount,
-            policy,
-            month_slice=month_slice
-            if month_slice is not None
-            else portfolio_monthly_base(policy),
-            fraction=frac,
-        )
-    tier_label = "不可买"
-    if active:
-        ic = index_bootstrap_rules(name, policy)
-        for tier in ic.get("tiers") or []:
-            if abs(float(tier["fraction"]) - frac) < 1e-9:
-                tier_label = str(tier.get("label") or f"{frac * 100:.0f}%档")
-                break
-        else:
-            tier_label = f"{frac * 100:.0f}%档"
-    elif action == "premium_block":
-        tier_label = "溢价暂缓"
-    elif action == "wait":
-        tier_label = "不可买"
-
     return {
         "name": name,
-        "active": active,
-        "action": action,
-        "fraction": frac,
-        "amount": amount,
-        "tier_label": tier_label,
-        "reason": reason,
+        "active": bool(observed.get("active")),
+        "action": observed.get("action") or "none",
+        "fraction": float(observed.get("fraction") or 0),
+        "amount": float(observed.get("amount") or 0),
+        "tier_label": observed.get("tier_label") or observed.get("state") or "不可买",
+        "state": observed.get("state") or "不可买",
+        "reason": observed.get("reason") or "",
+        "needs_human_confirm": bool(observed.get("needs_human_confirm", True)),
     }
 
 
@@ -523,12 +491,10 @@ def fingerprint_dca(lines: list[dict]) -> dict:
 
 
 def fingerprint_build(lines: list[dict]) -> dict:
+    """State-only fingerprint — amounts / progress never count as change."""
     return {
         line["name"]: {
-            "active": line["active"],
-            "fraction": line["fraction"],
-            "tier_label": line["tier_label"],
-            "action": line["action"],
+            "state": line.get("state") or line.get("tier_label"),
         }
         for line in lines
     }
@@ -547,4 +513,8 @@ def build_summary_line(policy: dict | None = None) -> str:
     cfg = bootstrap_rules(policy)
     if not cfg.get("enabled"):
         return "建仓未启用"
-    return "建仓：独立事件邮件；1年PE+回撤分档；状态变更才推送；不与周度定投合并"
+    days = int(cfg.get("confirm_trading_days", 2))
+    return (
+        f"建仓：每日刷新、状态机触发；升级/恢复需连续{days}个交易日确认；"
+        "风险信号立即发；同一状态不重复催促；不与周度定投合并"
+    )

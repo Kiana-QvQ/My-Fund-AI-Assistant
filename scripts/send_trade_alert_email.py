@@ -32,11 +32,15 @@ from alert_state import (  # noqa: E402
     load_alert_state,
     save_alert_state,
 )
+from build_state_machine import (  # noqa: E402
+    advance_machine,
+    confirm_days,
+    fingerprint_from_machines,
+)
 from investment_plan import (  # noqa: E402
     allocate_dca_plan,
     build_summary_line,
     dca_summary_line,
-    fingerprint_build,
     fingerprint_dca,
     resolve_build_line,
     resolve_dca_line,
@@ -227,11 +231,19 @@ def collect_build(snapshot: dict, policy: dict) -> list[dict]:
             tradeable=item.get("tradeable"),
             held_cost=float(held.get(code, 0) or 0),
             target_amount=principal * weight,
+            drawdown_status=item.get("drawdown_status"),
+            pe_status=item.get("pe_status") or item.get("status"),
         )
         line["fund_code"] = code
         line["fund_name"] = fund_name
+        line["pct_10y"] = item.get("pe_percentile")
         line["pct_1y"] = item.get("pe_percentile_1y")
         line["dd"] = item.get("drawdown_from_52w_high_pct")
+        line["premium_pct"] = item.get("qdii_premium_pct")
+        if line.get("premium_pct") is None and isinstance(
+            item.get("qdii_premium"), (int, float)
+        ):
+            line["premium_pct"] = float(item["qdii_premium"]) * 100
         lines.append(line)
     return lines
 
@@ -421,20 +433,55 @@ def build_build_email(
     changes: list[str],
 ) -> tuple[str, str]:
     now = datetime.now(CST).strftime("%Y-%m-%d %H:%M CST")
-    active = [ln for ln in lines if ln["active"]]
+    changed_names = {
+        c.split(":", 1)[0].strip()
+        for c in changes
+        if ":" in c
+    }
+    focus = [ln for ln in lines if ln["name"] in changed_names] or lines
+    active = [ln for ln in focus if ln.get("active")]
     subject = f"【建仓事件】{timing['signal_date']}｜状态变更"
     if active:
         subject += "｜可建：" + "、".join(ln["name"] for ln in active)
     else:
-        subject += "｜条件失效/不可买"
-
-    active_block = (
-        "\n".join(
-            f"  · {ln['fund_name']}（{ln['fund_code']}）{ln['tier_label']}"
-            f" 约 {ln['amount']:.2f} 元｜{ln['reason']}"
-            for ln in active
+        labels = "、".join(
+            str(ln.get("state") or ln.get("tier_label")) for ln in focus[:3]
         )
-        or "  · 当前无满足条件的建仓标的"
+        subject += f"｜{labels}" if labels else "｜条件失效/不可买"
+
+    def _fmt_metrics(ln: dict) -> str:
+        pct10 = ln.get("pct_10y")
+        pct1 = ln.get("pct_1y")
+        dd = ln.get("dd")
+        prem = ln.get("premium_pct")
+        parts = [
+            f"10年PE分位 {pct10:.2f}%"
+            if isinstance(pct10, (int, float))
+            else "10年PE分位 —",
+            f"1年PE分位 {pct1:.2f}%"
+            if isinstance(pct1, (int, float))
+            else "1年PE分位 —",
+            f"52周回撤 {dd:.2f}%" if isinstance(dd, (int, float)) else "52周回撤 —",
+            f"QDII溢价 {prem:.2f}%"
+            if isinstance(prem, (int, float))
+            else "QDII溢价 —",
+        ]
+        return "；".join(parts)
+
+    detail_block = (
+        "\n".join(
+            (
+                f"  · {ln['name']}｜{ln['fund_name']}（{ln['fund_code']}）\n"
+                f"    状态：{ln.get('state') or ln.get('tier_label')}\n"
+                f"    指标：{_fmt_metrics(ln)}\n"
+                f"    本次建议金额：{float(ln.get('amount') or 0):.2f} 元"
+                f"{'（可研究申购）' if ln.get('active') else '（不建议买入）'}\n"
+                f"    人工确认：{'需要' if ln.get('needs_human_confirm', True) else '否'}｜"
+                f"{ln.get('reason') or ''}"
+            )
+            for ln in focus
+        )
+        or "  · （无明细）"
     )
     change_block = "\n".join(f"- {c}" for c in changes) or "- （无）"
     body = f"""{subject}
@@ -444,6 +491,7 @@ def build_build_email(
 signal_date：{timing["signal_date"]}
 order_date：{timing["order_date"]}
 cutoff_time：{timing["cutoff_time"]}
+请在 {timing["order_date"]} 的 15:00 前于银行 APP 提交场外 A 类申购（若建议买入）。
 
 【规则】
 {build_summary_line(policy)}
@@ -451,11 +499,16 @@ cutoff_time：{timing["cutoff_time"]}
 【状态变更】
 {change_block}
 
-【当前可建】
-{active_block}
+【标的明细】
+{detail_block}
+
+【记账】
+- 定投买入：`record_holding.py buy --purpose dca`
+- 建仓买入：`record_holding.py buy --purpose build`
+- 同一状态持续不变、或仅买入金额/距目标进度变化，不会重复发信。
+- 不因「尚未买满」每日催促。
 
 【说明】
-- 仅在可买/不可买或档位实质性变化时发送。
 - 场外未知价：估值日 ≠ 净值确认日属正常。
 - 仅研究提醒，不自动下单。
 
@@ -505,13 +558,77 @@ def main() -> None:
     )
     build_lines = collect_build(snapshot, policy)
     new_dca_fp = fingerprint_dca(dca_lines)
-    new_build_fp = fingerprint_build(build_lines)
 
     old_dca = state.get("dca") or {}
-    old_build = state.get("build") or {}
+    old_machines = state.get("build_machines") or {}
+    # Migrate legacy fingerprint → machine baseline (no email storm).
+    if not old_machines and state.get("build"):
+        from build_state_machine import state_from_fraction  # noqa: WPS433
+
+        legacy_label_map = {
+            "溢价暂缓": "QDII溢价阻断",
+            "QDII溢价阻断": "QDII溢价阻断",
+            "止盈观察": "止盈观察",
+            "数据源失败": "数据源失败",
+            "不可买": "不可买",
+            "正式建仓 100%": "正式建仓 100%",
+            "正式小额底仓 50%": "正式小额底仓 50%",
+            "宽松观测仓 25%": "宽松观测仓 25%",
+            # Pre-rename labels
+            "正式小额底仓": "正式建仓 100%",
+            "宽松观测仓": "宽松观测仓 25%",
+        }
+        for name, fp in (state.get("build") or {}).items():
+            legacy = None
+            if isinstance(fp, dict):
+                if fp.get("state"):
+                    legacy = str(fp["state"])
+                elif isinstance(fp.get("fraction"), (int, float)) and float(fp["fraction"]) > 0:
+                    legacy = state_from_fraction(float(fp["fraction"]))
+                elif fp.get("tier_label"):
+                    legacy = legacy_label_map.get(
+                        str(fp["tier_label"]), str(fp["tier_label"])
+                    )
+            if legacy:
+                old_machines[name] = {
+                    "current_state": legacy,
+                    "candidate_state": None,
+                    "candidate_count": 0,
+                    "last_notified_state": legacy,
+                    "last_notified_at": state.get("updated_at"),
+                }
+
+    needed = confirm_days(policy)
+    force_build = args.mode == "force_build"
+    new_machines: dict = {}
+    build_changes: list[str] = []
+    notify_build = False
+    for ln in build_lines:
+        name = ln["name"]
+        observed = ln.get("state") or ln.get("tier_label") or "不可买"
+        machine, should_notify, change = advance_machine(
+            old_machines.get(name),
+            observed,
+            confirm_needed=needed,
+            force_notify=force_build,
+        )
+        new_machines[name] = machine
+        # Surface pending confirmation in logs / line meta
+        ln["machine"] = machine
+        if machine.get("candidate_state"):
+            ln["pending_confirm"] = (
+                f"候选 {machine['candidate_state']} "
+                f"({machine.get('candidate_count')}/{needed})"
+            )
+        if should_notify and change:
+            build_changes.append(f"{name}: {change}")
+            notify_build = True
+            # Align line display to confirmed/current machine state for email
+            ln["state"] = machine.get("current_state") or observed
+            ln["tier_label"] = ln["state"]
+
     dca_changes = diff_fingerprint(old_dca, new_dca_fp)
-    build_changes = diff_fingerprint(old_build, new_build_fp)
-    first_run = not old_dca and not old_build
+    first_run = not old_dca and not old_machines and not state.get("build")
 
     print(
         f"mode={args.mode} thursday={is_thursday} "
@@ -524,9 +641,10 @@ def main() -> None:
             f"weekly={ln['weekly']} monthly={ln['monthly']} paused={ln['paused']}"
         )
     for ln in build_lines:
+        pending = ln.get("pending_confirm") or ""
         print(
-            f"BUILD {ln['name']}: active={ln['active']} "
-            f"tier={ln['tier_label']} amount={ln['amount']}"
+            f"BUILD {ln['name']}: state={ln.get('state')} "
+            f"active={ln['active']} amount={ln['amount']} {pending}"
         )
 
     sent_weekly = False
@@ -596,35 +714,37 @@ def main() -> None:
         )
 
     send_build = args.mode in ("event", "auto", "force_build") and (
-        args.mode == "force_build" or build_changes
+        force_build or notify_build
     )
-    if args.mode == "force_build" or (send_build and build_changes):
-        if args.mode == "force_build" or build_changes:
-            subject, body = build_build_email(
-                lines=build_lines,
-                timing=timing,
-                policy=policy,
-                changes=build_changes or ["（手动 force_build）"],
-            )
-            send_email(subject, body, dry_run=args.dry_run)
+    sent_build = False
+    if send_build and (force_build or build_changes):
+        subject, body = build_build_email(
+            lines=build_lines,
+            timing=timing,
+            policy=policy,
+            changes=build_changes or ["（手动 force_build）"],
+        )
+        send_email(subject, body, dry_run=args.dry_run)
+        sent_build = True
 
     if (
         not sent_weekly
         and not sent_event_dca
-        and not (send_build and build_changes)
+        and not sent_build
         and args.mode != "force_build"
     ):
         print("跳过发送：无周四周报且无定投/建仓状态变更（或定投邮件达月上限）")
         _write_github_summary(
             "### 邮件跳过\n\n"
-            "- 非周四周报，或定投/建仓指纹无变化，或定投邮件已达月上限\n"
+            "- 非周四周报，或定投/建仓状态无变化，或定投邮件已达月上限\n"
         )
 
     if args.persist_state and not args.dry_run:
         save_alert_state(
             {
                 "dca": new_dca_fp,
-                "build": new_build_fp,
+                "build": fingerprint_from_machines(new_machines),
+                "build_machines": new_machines,
                 "dca_month": {
                     "year_month": month_key,
                     "spent": month_spent,
