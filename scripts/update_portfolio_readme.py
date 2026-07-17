@@ -16,6 +16,12 @@ except Exception:  # pragma: no cover - environments without tzdata
 
 
 ROOT = Path(__file__).resolve().parents[1]
+SCRIPTS = Path(__file__).resolve().parent
+if str(SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS))
+
+from policy_rules import classify_index, decision_label  # noqa: E402
+
 HOLDINGS_PATH = ROOT / "config" / "portfolio_holdings.json"
 SNAPSHOT_PATH = ROOT / "data" / "market_snapshot.json"
 STATUS_PATH = ROOT / "data" / "portfolio_status.json"
@@ -50,31 +56,44 @@ def format_update_time(when: datetime) -> str:
 
 def summarize_equity(indexes: dict) -> tuple[str, list[str]]:
     """Return overall equity tone and short per-index notes."""
-    rules = (
-        ("沪深300", 40.0, "A股"),
-        ("中证500", 40.0, "A股"),
-        ("标普500", 50.0, "美股"),
-        ("纳斯达克100", 50.0, "美股"),
-    )
+    names = ("沪深300", "中证500", "标普500", "纳斯达克100")
     buyable: list[str] = []
+    take_profit: list[str] = []
+    blocked: list[str] = []
     paused: list[str] = []
     missing: list[str] = []
     notes: list[str] = []
-    for name, threshold, _market in rules:
+    for name in names:
         item = indexes.get(name, {})
-        percentile = item.get("pe_percentile")
-        if percentile is None:
-            missing.append(name)
-            notes.append(f"{name}数据不足")
-            continue
-        if percentile < threshold:
+        action, reason = classify_index(
+            name,
+            item.get("pe_percentile"),
+            premium=item.get("qdii_premium"),
+        )
+        label = decision_label(action)
+        premium_pct = item.get("qdii_premium_pct")
+        suffix = (
+            f"，溢价{premium_pct:.2f}%"
+            if isinstance(premium_pct, (int, float))
+            else ""
+        )
+        notes.append(f"{name}：{label}{suffix}")
+        if action in ("buy", "double"):
             buyable.append(name)
-            notes.append(f"{name}可买({percentile:.1f}%<{threshold:.0f}%)")
+        elif action == "take_profit":
+            take_profit.append(name)
+        elif action == "premium_block":
+            blocked.append(name)
+        elif action == "unknown":
+            missing.append(name)
         else:
             paused.append(name)
-            notes.append(f"{name}暂停({percentile:.1f}%≥{threshold:.0f}%)")
     if buyable:
         tone = "🟢 权益有可买信号"
+    elif take_profit:
+        tone = "🟠 权益进入止盈观察"
+    elif blocked:
+        tone = "🟡 QDII溢价过高暂缓"
     elif missing and not paused:
         tone = "⚪ 权益数据不足"
     else:
@@ -149,11 +168,23 @@ def build_status() -> dict:
         )
 
     allocations = snapshot.get("build_plan", {}).get("allocations", [])
+    allocation_by_code = {row["fund_code"]: row for row in allocations}
+    for row in rows:
+        alloc = allocation_by_code.get(row["fund_code"])
+        if alloc and alloc["action"] == "take_profit":
+            row["decision"] = "建议分批止盈"
+            row["reason"] = alloc["reason"]
+
     held_codes = {row["fund_code"] for row in rows}
     for allocation in allocations:
         if allocation["fund_code"] in held_codes:
             continue
-        if allocation["action"] in ("buy", "double"):
+        if allocation["action"] in ("buy", "double", "take_profit"):
+            decision = {
+                "buy": "可研究买入",
+                "double": "可研究加倍",
+                "take_profit": "建议分批止盈",
+            }[allocation["action"]]
             rows.append(
                 {
                     "fund_code": allocation["fund_code"],
@@ -168,9 +199,7 @@ def build_status() -> dict:
                     "shortfall": building_principal
                     * allocation["target_percent"]
                     / 100,
-                    "decision": "可研究买入"
-                    if allocation["action"] == "buy"
-                    else "可研究加倍",
+                    "decision": decision,
                     "reason": allocation["reason"],
                     "nav": None,
                     "nav_date": None,
@@ -233,7 +262,7 @@ def render(status: dict) -> str:
         f"已投入：**{money(status['total_cost_basis'])}** · "
         f"整体建仓进度：**{status['building_progress_percent']:.2f}%**",
         f"> {status['overall_decision']}",
-        "> 状态灯：🟢 可买/可建仓 · 🟡 观望/暂停/不催补 · ⚪ 等待数据",
+        "> 状态灯：🟢 可买/可建仓 · 🟠 止盈观察 · 🟡 观望/暂停/溢价暂缓 · ⚪ 等待数据",
         "> 说明：当前投入占比 = 单项已投入金额 ÷ 1万元建仓本金；目标金额 = 建仓本金 × 目标仓位。",
         "",
         "| 基金 | 代码 | 已投入 | 目标仓位 | 目标金额 | 当前投入占比 | 还差目标金额 | 今日状态 |",
@@ -267,50 +296,49 @@ def render(status: dict) -> str:
             "",
             "> PE 数据用于判断指数贵不贵；场外基金按当日净值成交，数据日期以指数实际更新日为准。",
             "",
-            "| 标的 | 场内代码 | 场外基金 | PE-TTM | 历史分位 | 数据日期 | 今日判断 |",
-            "|---|---:|---:|---:|---:|---|---|",
+            "| 标的 | 场内代码 | 场外基金 | PE-TTM | 历史分位 | QDII溢价 | 数据日期 | 今日判断 |",
+            "|---|---:|---:|---:|---:|---:|---|---|",
         ]
     )
     index_rows = (
-        ("沪深300", "510300", "460300", "A股规则"),
-        ("中证500", "510500", "160119", "A股规则"),
-        ("标普500", "513500", "050025", "美股规则"),
-        ("纳斯达克100", "159941", "016452", "美股规则"),
+        ("沪深300", "510300", "460300"),
+        ("中证500", "510500", "160119"),
+        ("标普500", "513500", "050025"),
+        ("纳斯达克100", "159941", "016452"),
     )
-    for name, market_code, fund_code, rule in index_rows:
+    for name, market_code, fund_code in index_rows:
         index = status["indexes"].get(name, {})
         pe = index.get("pe_ttm")
         percentile = index.get("pe_percentile")
         data_date = index.get("date", "待核验")
-        if pe is None or percentile is None:
-            pe_text = "待核验"
-            percentile_text = "待核验"
-            decision = "数据不足，暂停自动买入"
-        elif rule == "A股规则":
-            pe_text = f"{pe:.2f}"
-            percentile_text = f"{percentile:.2f}%"
-            if percentile <= 30:
-                decision = "低估，可研究双倍定投"
-            elif percentile < 40:
-                decision = "低估，可研究定投"
-            else:
-                decision = "分位≥40%，暂停新增"
+        premium_pct = index.get("qdii_premium_pct")
+        if name in ("沪深300", "中证500"):
+            premium_text = "-"
+        elif isinstance(premium_pct, (int, float)):
+            premium_text = f"{premium_pct:.2f}%"
         else:
-            pe_text = f"{pe:.2f}"
-            percentile_text = f"{percentile:.2f}%"
-            decision = (
-                "分位<50%，可研究定投"
-                if percentile < 50
-                else "分位≥50%，暂停新增"
-            )
+            premium_text = "待核验"
+        action, reason = classify_index(
+            name,
+            percentile,
+            premium=index.get("qdii_premium"),
+        )
+        pe_text = f"{pe:.2f}" if isinstance(pe, (int, float)) else "待核验"
+        percentile_text = (
+            f"{percentile:.2f}%" if isinstance(percentile, (int, float)) else "待核验"
+        )
+        decision = decision_label(action)
+        if action == "unknown":
+            decision = "数据不足，暂停自动买入"
         lines.append(
             f"| {name} | `{market_code}` | `{fund_code}` | {pe_text} | "
-            f"{percentile_text} | {data_date} | {decision} |"
+            f"{percentile_text} | {premium_text} | {data_date} | {decision} |"
         )
     lines.extend(
         [
             "",
-            "> A股分位为近10年滚动PE；美股PE来自 `config/us_pe_snapshot.json`（需手工更新）。不同网站口径可能不同。",
+            "> A股分位为近10年滚动PE；美股PE由 `scripts/us_pe.py` 自动刷新（yfinance），"
+            "历史样本不足时分位仍用参考值。QDII溢价按场内ETF相对IOPV计算，＞2%暂缓买入。",
         ]
     )
     lines.extend(

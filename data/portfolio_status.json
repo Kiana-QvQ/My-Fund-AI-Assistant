@@ -1,18 +1,18 @@
 {
   "as_of": "2026-07-17",
-  "generated_at": "2026-07-17T09:56:33+08:00",
-  "updated_at_display": "2026-07-17 09:56:33 CST",
+  "generated_at": "2026-07-17T10:10:09+08:00",
+  "updated_at_display": "2026-07-17 10:10:09 CST",
   "total_cost_basis": 2000.0,
   "building_principal": 10000.0,
   "initial_build_percent": 20.0,
   "first_month_budget": 2000.0,
   "building_progress_percent": 20.0,
-  "overall_decision": "🟡 权益均暂停新增；短债本期不催补（012773 长期还差 ¥3,100.00）",
+  "overall_decision": "🟠 权益进入止盈观察；短债本期不催补（012773 长期还差 ¥3,100.00）",
   "equity_notes": [
-    "沪深300暂停(80.1%≥40%)",
-    "中证500暂停(85.8%≥40%)",
-    "标普500暂停(76.0%≥50%)",
-    "纳斯达克100暂停(72.0%≥50%)"
+    "沪深300：建议分批止盈",
+    "中证500：建议分批止盈",
+    "标普500：建议分批止盈，溢价5.44%",
+    "纳斯达克100：建议分批止盈，溢价6.99%"
   ],
   "rows": [
     {
@@ -62,32 +62,39 @@
     "标普500": {
       "pe_ttm": 27.5,
       "pe_percentile": 76.0,
-      "status": "verified_range",
-      "reason": "不同数据源口径存在差异，约 25.6~32.6；采用约 27.5 的滚动PE和近10年约76%分位。",
-      "sources": [
-        "https://www.gurufocus.com/economic_indicators/57/sp-500-pe-ratio",
-        "https://dqydj.com/sp-500-pe-ratio/",
-        "https://www.factset.com/earningsinsight",
-        "https://www.multpl.com/s-p-500-pe-ratio"
-      ],
-      "date": "2026-07-15",
-      "window": "近10年滚动PE分位",
-      "source": "联网核对结果：GuruFocus、dqydj、FactSet、Multpl、WorldPeratio 等公开数据源"
+      "ticker": "SPY",
+      "status": "fallback_cached",
+      "percentile_source": "reference_fallback(n=1<60)",
+      "history_points": 1,
+      "reason": "SPY trailing PE=27.50；近10年分位来源 reference_fallback(n=1<60)",
+      "fetch_error": "Too Many Requests. Rate limited. Try after a while.",
+      "date": "2026-07-17",
+      "window": "近10年滚动PE分位（历史样本不足时沿用参考分位）",
+      "source": "yfinance trailingPE (SPY/QQQ) + local history",
+      "qdii_premium": 0.0544,
+      "qdii_premium_pct": 5.44,
+      "qdii_etf": "513500",
+      "qdii_premium_status": "ok",
+      "qdii_premium_reason": "场内513500 溢价 5.44%"
     },
     "纳斯达克100": {
       "pe_ttm": 33.6,
       "pe_percentile": 72.0,
-      "status": "verified_range",
-      "reason": "不同数据源口径存在差异，约 31.6~35.2；采用约 33.6 的滚动PE和近10年约72%分位。",
-      "sources": [
-        "https://www.gurufocus.com/economic_indicators/6778/nasdaq-100-pe-ratio",
-        "https://worldperatio.com/index/nasdaq-100/",
-        "https://siblisresearch.com/data/nasdaq-100-pe-ratio/"
-      ],
-      "date": "2026-07-15",
-      "window": "近10年滚动PE分位",
-      "source": "联网核对结果：GuruFocus、dqydj、FactSet、Multpl、WorldPeratio 等公开数据源"
+      "ticker": "QQQ",
+      "status": "fallback_cached",
+      "percentile_source": "reference_fallback(n=1<60)",
+      "history_points": 1,
+      "reason": "QQQ trailing PE=33.60；近10年分位来源 reference_fallback(n=1<60)",
+      "fetch_error": "Too Many Requests. Rate limited. Try after a while.",
+      "date": "2026-07-17",
+      "window": "近10年滚动PE分位（历史样本不足时沿用参考分位）",
+      "source": "yfinance trailingPE (SPY/QQQ) + local history",
+      "qdii_premium": 0.0699,
+      "qdii_premium_pct": 6.99,
+      "qdii_etf": "159941",
+      "qdii_premium_status": "ok",
+      "qdii_premium_reason": "场内159941 溢价 6.99%"
     }
   },
-  "data_status": "market_snapshot.json 已加载；美股PE手工快照日期 2026-07-15，可能滞后"
+  "data_status": "market_snapshot.json 已加载"
 }

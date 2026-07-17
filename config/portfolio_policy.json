@@ -19,7 +19,8 @@
     "us_normal_percentile_below": 50,
     "us_pause_percentile_at_or_above": 50,
     "us_take_profit_percentile_at_or_above": 70,
-    "qdii_premium_pause_above": 0.02
+    "qdii_premium_pause_above": 0.02,
+    "qdii_premium_resume_below": 0.01
   },
   "guardrails": {
     "paper_or_advice_only": true,

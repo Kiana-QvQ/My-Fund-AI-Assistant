@@ -1,0 +1,100 @@
+"""Shared valuation / action rules loaded from portfolio_policy.json."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+POLICY_PATH = ROOT / "config" / "portfolio_policy.json"
+
+A_SHARE = ("沪深300", "中证500")
+US = ("标普500", "纳斯达克100")
+
+
+def load_policy(path: Path = POLICY_PATH) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def rules(policy: dict | None = None) -> dict:
+    policy = policy or load_policy()
+    return policy.get("rules", {})
+
+
+def classify_index(
+    name: str,
+    percentile: float | None,
+    *,
+    premium: float | None = None,
+    policy: dict | None = None,
+) -> tuple[str, str]:
+    """Return (action, reason) for an index sleeve.
+
+    Actions: buy | double | wait | take_profit | premium_block | unknown
+    """
+    r = rules(policy)
+    if percentile is None:
+        return "unknown", "缺少 PE 分位"
+
+    if name in A_SHARE:
+        double_at = float(r.get("a_share_double_invest_percentile_at_or_below", 30))
+        buy_below = float(r.get("a_share_normal_percentile_below", 40))
+        take_profit_at = float(r.get("a_share_take_profit_percentile_at_or_above", 60))
+        if percentile <= double_at:
+            return "double", f"A股分位 {percentile:.2f}% ≤ {double_at:.0f}%，可研究加倍"
+        if percentile < buy_below:
+            return "buy", f"A股分位 {percentile:.2f}% < {buy_below:.0f}%，可研究定投"
+        if percentile >= take_profit_at:
+            return (
+                "take_profit",
+                f"A股分位 {percentile:.2f}% ≥ {take_profit_at:.0f}%，建议分批止盈1/3~1/2",
+            )
+        return (
+            "wait",
+            f"A股分位 {percentile:.2f}% ≥ {buy_below:.0f}%，暂停新增",
+        )
+
+    # US / QDII
+    buy_below = float(r.get("us_normal_percentile_below", 50))
+    take_profit_at = float(r.get("us_take_profit_percentile_at_or_above", 70))
+    premium_pause = float(r.get("qdii_premium_pause_above", 0.02))
+    premium_resume = float(r.get("qdii_premium_resume_below", 0.01))
+
+    if percentile >= take_profit_at:
+        return (
+            "take_profit",
+            f"美股分位 {percentile:.2f}% ≥ {take_profit_at:.0f}%，建议分批止盈1/3~1/2",
+        )
+
+    if percentile < buy_below:
+        if premium is not None and premium > premium_pause:
+            return (
+                "premium_block",
+                f"QDII溢价 {premium * 100:.2f}% > {premium_pause * 100:.0f}%，暂缓买入",
+            )
+        if premium is not None and premium > premium_resume:
+            return (
+                "wait",
+                f"美股分位 {percentile:.2f}% < {buy_below:.0f}% 但溢价 "
+                f"{premium * 100:.2f}% 仍高于 {premium_resume * 100:.0f}%，等待回落",
+            )
+        return "buy", f"美股近10年分位 {percentile:.2f}% < {buy_below:.0f}%，可研究定投"
+
+    if premium is not None and premium > premium_pause:
+        return (
+            "premium_block",
+            f"QDII溢价 {premium * 100:.2f}% > {premium_pause * 100:.0f}%，暂缓买入",
+        )
+    return "wait", f"美股近10年分位 {percentile:.2f}% ≥ {buy_below:.0f}%，暂停新增"
+
+
+def decision_label(action: str) -> str:
+    return {
+        "buy": "可研究定投",
+        "double": "可研究加倍",
+        "wait": "暂停新增",
+        "take_profit": "建议分批止盈",
+        "premium_block": "溢价过高暂缓",
+        "unknown": "数据不足",
+    }.get(action, action)

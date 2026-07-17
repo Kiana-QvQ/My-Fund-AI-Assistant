@@ -4,13 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       alert_mode:
-        description: "Email: auto (buy-signal only) / force / skip"
+        description: "Email: auto (buy/take-profit) / force / skip"
         required: false
         default: auto
   schedule:
-    # 09:00 CST: refresh + at most one buy-action email (if PE below threshold).
-    # 21:00 CST: refresh dashboard only (A-share close PE), no email.
-    # GitHub cron may delay by several minutes.
+    # 09:00 CST: refresh + action email if buy/take-profit signal.
+    # 21:00 CST: refresh dashboard only, no email.
+    # Skips A-share holidays via trading calendar check.
     - cron: "0 1 * * 1-5"
     - cron: "0 13 * * 1-5"
 
@@ -32,8 +32,20 @@ jobs:
       - name: Install data dependencies
         run: python -m pip install -r requirements-data.txt
 
+      - name: Check A-share trading day
+        id: gate
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "run=yes" >> "$GITHUB_OUTPUT"
+            echo "Manual run: skip holiday gate"
+          else
+            python scripts/trading_calendar.py --github-output
+          fi
+
       - name: Resolve alert mode
         id: mode
+        if: steps.gate.outputs.run == 'yes'
         shell: bash
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
@@ -41,9 +53,7 @@ jobs:
             MODE="${MODE:-auto}"
           else
             case "${{ github.event.schedule }}" in
-              # Morning action window: may send one email if buy signal exists.
               "0 1 * * 1-5") MODE="auto" ;;
-              # Evening valuation refresh only.
               "0 13 * * 1-5") MODE="skip" ;;
               *) MODE="auto" ;;
             esac
@@ -52,22 +62,25 @@ jobs:
           echo "Alert mode: ${MODE}"
 
       - name: Refresh market snapshot
+        if: steps.gate.outputs.run == 'yes'
         run: python scripts/refresh_market_snapshot.py --principal 10000
 
       - name: Update README dashboard
+        if: steps.gate.outputs.run == 'yes'
         run: python scripts/update_portfolio_readme.py
 
-      # Commit before email so SMTP failures never block dashboard updates.
       - name: Commit dashboard changes
+        if: steps.gate.outputs.run == 'yes'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -f README.md data/market_snapshot.json data/portfolio_status.json
+          git add -f config/us_pe_snapshot.json data/us_pe_history.json
           git diff --cached --quiet || git commit -m "自动更新持仓与今日投资判断"
           git push
 
       - name: Send trade alert email
-        if: steps.mode.outputs.value != 'skip'
+        if: steps.gate.outputs.run == 'yes' && steps.mode.outputs.value != 'skip'
         continue-on-error: true
         env:
           ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
@@ -89,3 +102,7 @@ jobs:
             EXTRA="--force"
           fi
           python scripts/send_trade_alert_email.py --monthly "${BUDGET}" ${EXTRA}
+
+      - name: Skip notice
+        if: steps.gate.outputs.run != 'yes'
+        run: echo "今天不是 A 股交易日，已跳过定时刷新。"

@@ -20,8 +20,12 @@ if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 from a_share_pe import query_pe_snapshot  # noqa: E402
+from policy_rules import classify_index, load_policy  # noqa: E402
+from qdii_premium import fetch_qdii_premiums  # noqa: E402
+from us_pe import refresh_us_pe  # noqa: E402
 
 DEFAULT_OUTPUT = ROOT / "data" / "market_snapshot.json"
+HOLDINGS_PATH = ROOT / "config" / "portfolio_holdings.json"
 US_PE_PATH = ROOT / "config" / "us_pe_snapshot.json"
 
 FUNDS = [
@@ -51,14 +55,14 @@ FUNDS = [
         "name": "博时标普500ETF联接A",
         "asset": "us",
         "target": 0.08,
-        "index": {"name": "标普500", "symbol": None},
+        "index": {"name": "标普500", "symbol": None, "etf": "513500"},
     },
     {
         "fund_code": "016452",
         "name": "南方纳斯达克100指数发起(QDII)A",
         "asset": "us",
         "target": 0.03,
-        "index": {"name": "纳斯达克100", "symbol": None},
+        "index": {"name": "纳斯达克100", "symbol": None, "etf": "159941"},
     },
 ]
 
@@ -70,6 +74,16 @@ def clean_number(value):
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def load_holdings_cost() -> dict[str, float]:
+    if not HOLDINGS_PATH.is_file():
+        return {}
+    doc = json.loads(HOLDINGS_PATH.read_text(encoding="utf-8"))
+    return {
+        item["fund_code"]: float(item.get("cost_basis") or 0)
+        for item in doc.get("holdings", [])
+    }
 
 
 def fund_snapshot() -> dict[str, dict]:
@@ -119,9 +133,13 @@ def fund_snapshot() -> dict[str, dict]:
     return result
 
 
-def index_snapshot() -> dict[str, dict]:
+def index_snapshot() -> tuple[dict[str, dict], dict[str, dict]]:
     result = query_pe_snapshot()
-    us_snapshot = json.loads(US_PE_PATH.read_text(encoding="utf-8"))
+    try:
+        us_snapshot = refresh_us_pe()
+    except Exception as exc:
+        us_snapshot = json.loads(US_PE_PATH.read_text(encoding="utf-8"))
+        us_snapshot["refresh_error"] = str(exc)
     for name, item in us_snapshot.get("indexes", {}).items():
         result[name] = {
             **item,
@@ -129,10 +147,30 @@ def index_snapshot() -> dict[str, dict]:
             "window": us_snapshot.get("window"),
             "source": us_snapshot.get("source"),
         }
-    return result
+    try:
+        premiums = fetch_qdii_premiums()
+    except Exception as exc:
+        premiums = {
+            "标普500": {"premium": None, "status": "error", "reason": str(exc)},
+            "纳斯达克100": {"premium": None, "status": "error", "reason": str(exc)},
+        }
+    for name, premium_item in premiums.items():
+        if name in result:
+            result[name]["qdii_premium"] = premium_item.get("premium")
+            result[name]["qdii_premium_pct"] = premium_item.get("premium_pct")
+            result[name]["qdii_etf"] = premium_item.get("etf_code")
+            result[name]["qdii_premium_status"] = premium_item.get("status")
+            result[name]["qdii_premium_reason"] = premium_item.get("reason")
+    return result, premiums
 
 
-def action_for(item: dict, fund: dict, indexes: dict) -> tuple[str, str]:
+def action_for(
+    item: dict,
+    fund: dict,
+    indexes: dict,
+    holdings_cost: dict[str, float],
+    policy: dict,
+) -> tuple[str, str]:
     if item["asset"] == "short_bond":
         status = fund["purchase_status"]
         if status in ("开放申购", "限大额"):
@@ -140,45 +178,76 @@ def action_for(item: dict, fund: dict, indexes: dict) -> tuple[str, str]:
         return "wait", f"申购状态为 {status}"
 
     if fund["purchase_status"] == "暂停申购":
-        return "wait", "基金当前暂停申购"
+        # Still surface take-profit / premium notes via index rules when useful.
+        index_name = (
+            item["index"]["symbol"]
+            if item["asset"] == "a_share"
+            else item["index"]["name"]
+        )
+        index = indexes.get(index_name, {})
+        signal, reason = classify_index(
+            index_name,
+            index.get("pe_percentile"),
+            premium=index.get("qdii_premium"),
+            policy=policy,
+        )
+        if signal == "take_profit" and holdings_cost.get(item["fund_code"], 0) > 0:
+            return "take_profit", f"{reason}；基金暂停申购不影响止盈观察"
+        return "wait", f"基金当前暂停申购；{reason}"
+
     if fund["purchase_status"] not in ("开放申购", "限大额"):
         return "wait", f"申购状态为 {fund['purchase_status']}"
 
     if item["asset"] == "a_share":
-        index = indexes[item["index"]["symbol"]]
-        p = index["pe_percentile"]
-        if p <= 30:
-            return "double", f"PE历史分位 {p:.2f}% <= 30%"
-        if p < 40:
-            return "buy", f"PE历史分位 {p:.2f}% < 40%"
-        return "wait", f"PE历史分位 {p:.2f}% >= 40%，按政策暂停"
+        index_name = item["index"]["symbol"]
+    else:
+        index_name = item["index"]["name"]
+    index = indexes.get(index_name, {})
+    signal, reason = classify_index(
+        index_name,
+        index.get("pe_percentile"),
+        premium=index.get("qdii_premium"),
+        policy=policy,
+    )
+    if signal == "take_profit":
+        held = holdings_cost.get(item["fund_code"], 0.0)
+        if held <= 0:
+            return "wait", f"{reason}；账本暂无该基金持仓，仅观察"
+        low = round(held / 3, 2)
+        high = round(held / 2, 2)
+        return "take_profit", f"{reason}；建议赎回约 {low:.2f}~{high:.2f} 元"
+    if signal in ("buy", "double"):
+        return signal, reason
+    return "wait", reason
 
-    index = indexes[item["index"]["name"]]
-    p = index.get("pe_percentile")
-    if p is None:
-        return "wait", "美股指数PE和历史分位未核实，不自动买入"
-    if p < 50:
-        return "buy", f"滚动PE近10年历史分位 {p:.2f}% < 50%"
-    return "wait", f"滚动PE近10年历史分位 {p:.2f}% >= 50%，按政策暂停"
 
-
-def build_plan(principal: float, funds: list[dict], indexes: dict) -> dict:
+def build_plan(
+    principal: float,
+    funds: list[dict],
+    indexes: dict,
+    holdings_cost: dict[str, float],
+    policy: dict,
+) -> dict:
     first_month = principal * 0.20
     allocations = []
     held_back = 0.0
     double_extra = 0.0
+    take_profit_notes: list[str] = []
     short_bond = next(item for item in funds if item["asset"] == "short_bond")
 
     for item in funds:
         fund = item["fund"]
         base = first_month * item["target"]
-        action, reason = action_for(item, fund, indexes)
+        action, reason = action_for(item, fund, indexes, holdings_cost, policy)
         planned = base
-        if action == "wait":
-            held_back += base
+        if action in ("wait", "take_profit", "premium_block", "unknown"):
+            if action != "take_profit":
+                held_back += base
+            else:
+                held_back += base
+                take_profit_notes.append(reason)
             planned = 0.0
         elif action == "double":
-            # Policy: double equity buy; extra amount is taken from short-bond sleeve.
             planned = base * 2
             double_extra += base
             reason = f"{reason}；加倍部分从短债底仓调拨"
@@ -201,7 +270,7 @@ def build_plan(principal: float, funds: list[dict], indexes: dict) -> dict:
         short_plan["planned_amount"] = round(max(adjusted, 0.0), 2)
         notes = []
         if held_back:
-            notes.append("权益暂停资金转入短债底仓")
+            notes.append("权益暂停/止盈观察资金转入短债底仓")
         if double_extra:
             notes.append(f"已为低估加倍调出 {double_extra:.2f} 元")
         if notes:
@@ -212,6 +281,7 @@ def build_plan(principal: float, funds: list[dict], indexes: dict) -> dict:
         "initial_build_percent": 20,
         "first_month_budget": round(first_month, 2),
         "allocations": allocations,
+        "take_profit_notes": take_profit_notes,
         "deferred_amount": round(
             first_month - sum(row["planned_amount"] for row in allocations), 2
         ),
@@ -225,8 +295,10 @@ def main() -> None:
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT))
     args = parser.parse_args()
 
+    policy = load_policy()
     funds = fund_snapshot()
-    indexes = index_snapshot()
+    indexes, premiums = index_snapshot()
+    holdings_cost = load_holdings_cost()
     items = []
     for item in FUNDS:
         current = dict(item)
@@ -237,7 +309,10 @@ def main() -> None:
         "as_of": date.today().isoformat(),
         "funds": funds,
         "indexes": indexes,
-        "build_plan": build_plan(args.principal, items, indexes),
+        "qdii_premiums": premiums,
+        "build_plan": build_plan(
+            args.principal, items, indexes, holdings_cost, policy
+        ),
     }
     output_path = Path(args.output)
     if not output_path.is_absolute():

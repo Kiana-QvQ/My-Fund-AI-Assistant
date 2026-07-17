@@ -1,30 +1,28 @@
 {
-  "as_of": "2026-07-15",
-  "window": "近10年滚动PE分位",
-  "source": "联网核对结果：GuruFocus、dqydj、FactSet、Multpl、WorldPeratio 等公开数据源",
+  "as_of": "2026-07-17",
+  "window": "近10年滚动PE分位（历史样本不足时沿用参考分位）",
+  "source": "yfinance trailingPE (SPY/QQQ) + local history",
+  "updated_at": "2026-07-17T10:09:48+08:00",
   "indexes": {
     "标普500": {
       "pe_ttm": 27.5,
       "pe_percentile": 76.0,
-      "status": "verified_range",
-      "reason": "不同数据源口径存在差异，约 25.6~32.6；采用约 27.5 的滚动PE和近10年约76%分位。",
-      "sources": [
-        "https://www.gurufocus.com/economic_indicators/57/sp-500-pe-ratio",
-        "https://dqydj.com/sp-500-pe-ratio/",
-        "https://www.factset.com/earningsinsight",
-        "https://www.multpl.com/s-p-500-pe-ratio"
-      ]
+      "ticker": "SPY",
+      "status": "fallback_cached",
+      "percentile_source": "reference_fallback(n=1<60)",
+      "history_points": 1,
+      "reason": "SPY trailing PE=27.50；近10年分位来源 reference_fallback(n=1<60)",
+      "fetch_error": "Too Many Requests. Rate limited. Try after a while."
     },
     "纳斯达克100": {
       "pe_ttm": 33.6,
       "pe_percentile": 72.0,
-      "status": "verified_range",
-      "reason": "不同数据源口径存在差异，约 31.6~35.2；采用约 33.6 的滚动PE和近10年约72%分位。",
-      "sources": [
-        "https://www.gurufocus.com/economic_indicators/6778/nasdaq-100-pe-ratio",
-        "https://worldperatio.com/index/nasdaq-100/",
-        "https://siblisresearch.com/data/nasdaq-100-pe-ratio/"
-      ]
+      "ticker": "QQQ",
+      "status": "fallback_cached",
+      "percentile_source": "reference_fallback(n=1<60)",
+      "history_points": 1,
+      "reason": "QQQ trailing PE=33.60；近10年分位来源 reference_fallback(n=1<60)",
+      "fetch_error": "Too Many Requests. Rate limited. Try after a while."
     }
   }
 }

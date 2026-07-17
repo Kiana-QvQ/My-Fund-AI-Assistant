@@ -5,10 +5,10 @@
 ## 当前持仓
 
 <!-- PORTFOLIO_STATUS_START -->
-> 自动更新时间：**2026-07-17 09:56:33 CST**
+> 自动更新时间：**2026-07-17 10:10:09 CST**
 > 建仓本金：**¥10,000.00** · 已投入：**¥2,000.00** · 整体建仓进度：**20.00%**
-> 🟡 权益均暂停新增；短债本期不催补（012773 长期还差 ¥3,100.00）
-> 状态灯：🟢 可买/可建仓 · 🟡 观望/暂停/不催补 · ⚪ 等待数据
+> 🟠 权益进入止盈观察；短债本期不催补（012773 长期还差 ¥3,100.00）
+> 状态灯：🟢 可买/可建仓 · 🟠 止盈观察 · 🟡 观望/暂停/溢价暂缓 · ⚪ 等待数据
 > 说明：当前投入占比 = 单项已投入金额 ÷ 1万元建仓本金；目标金额 = 建仓本金 × 目标仓位。
 
 | 基金 | 代码 | 已投入 | 目标仓位 | 目标金额 | 当前投入占比 | 还差目标金额 | 今日状态 |
@@ -17,10 +17,10 @@
 
 ### 权益信号速览
 
-- 沪深300暂停(80.1%≥40%)
-- 中证500暂停(85.8%≥40%)
-- 标普500暂停(76.0%≥50%)
-- 纳斯达克100暂停(72.0%≥50%)
+- 沪深300：建议分批止盈
+- 中证500：建议分批止盈
+- 标普500：建议分批止盈，溢价5.44%
+- 纳斯达克100：建议分批止盈，溢价6.99%
 
 ### 今日判断依据
 
@@ -30,16 +30,16 @@
 
 > PE 数据用于判断指数贵不贵；场外基金按当日净值成交，数据日期以指数实际更新日为准。
 
-| 标的 | 场内代码 | 场外基金 | PE-TTM | 历史分位 | 数据日期 | 今日判断 |
-|---|---:|---:|---:|---:|---|---|
-| 沪深300 | `510300` | `460300` | 13.56 | 80.06% | 2026-07-16 | 分位≥40%，暂停新增 |
-| 中证500 | `510500` | `160119` | 30.18 | 85.78% | 2026-07-16 | 分位≥40%，暂停新增 |
-| 标普500 | `513500` | `050025` | 27.50 | 76.00% | 2026-07-15 | 分位≥50%，暂停新增 |
-| 纳斯达克100 | `159941` | `016452` | 33.60 | 72.00% | 2026-07-15 | 分位≥50%，暂停新增 |
+| 标的 | 场内代码 | 场外基金 | PE-TTM | 历史分位 | QDII溢价 | 数据日期 | 今日判断 |
+|---|---:|---:|---:|---:|---:|---|---|
+| 沪深300 | `510300` | `460300` | 13.56 | 80.06% | - | 2026-07-16 | 建议分批止盈 |
+| 中证500 | `510500` | `160119` | 30.18 | 85.78% | - | 2026-07-16 | 建议分批止盈 |
+| 标普500 | `513500` | `050025` | 27.50 | 76.00% | 5.44% | 2026-07-17 | 建议分批止盈 |
+| 纳斯达克100 | `159941` | `016452` | 33.60 | 72.00% | 6.99% | 2026-07-17 | 建议分批止盈 |
 
-> A股分位为近10年滚动PE；美股PE来自 `config/us_pe_snapshot.json`（需手工更新）。不同网站口径可能不同。
+> A股分位为近10年滚动PE；美股PE由 `scripts/us_pe.py` 自动刷新（yfinance），历史样本不足时分位仍用参考值。QDII溢价按场内ETF相对IOPV计算，＞2%暂缓买入。
 
-> 数据状态：market_snapshot.json 已加载；美股PE手工快照日期 2026-07-15，可能滞后。AI 只提供研究建议，不自动下单。
+> 数据状态：market_snapshot.json 已加载。AI 只提供研究建议，不自动下单。
 <!-- PORTFOLIO_STATUS_END -->
 持仓源文件：[`config/portfolio_holdings.json`](config/portfolio_holdings.json)
 
@@ -76,13 +76,19 @@ MCP 配置：[`config/mcp_servers.json`](config/mcp_servers.json)。场外基金
 ## 使用
 
 ```powershell
-python app/ai_assistant.py --mode plan --input "本月可投入300元，510300估值分位32%"
-python app/ai_assistant.py --mode journal --input journal/daily/2026-07-16-template.md
-python app/ai_assistant.py --mode review --input reports/latest-trade.md
-python app/ai_assistant.py --mode plan --input "本月可投入300元" --output reports/2026-07-plan.md
+pip install -r requirements-data.txt
 python scripts/refresh_market_snapshot.py --principal 10000
 python scripts/update_portfolio_readme.py
+python scripts/trading_calendar.py
+python scripts/us_pe.py
+python scripts/record_holding.py show
+python scripts/record_holding.py buy --fund 460300 --amount 270 --note "定投"
+python scripts/record_holding.py sell --fund 460300 --amount 90 --note "止盈1/3"
+python scripts/send_trade_alert_email.py --dry-run
+python app/ai_assistant.py --mode plan --input "本月可投入300元，510300估值分位32%"
 ```
+
+买入/止盈后请用 `record_holding.py` 更新账本，README 持仓进度才会跟着变。
 
 ## 目录
 
