@@ -12,6 +12,8 @@ data/*
 logs/*
 reports/*
 !data/.gitkeep
+!data/market_snapshot.json
+!data/portfolio_status.json
 !logs/.gitkeep
 !reports/.gitkeep
 

@@ -48,6 +48,40 @@ def format_update_time(when: datetime) -> str:
     return local.strftime("%Y-%m-%d %H:%M:%S CST")
 
 
+def summarize_equity(indexes: dict) -> tuple[str, list[str]]:
+    """Return overall equity tone and short per-index notes."""
+    rules = (
+        ("沪深300", 40.0, "A股"),
+        ("中证500", 40.0, "A股"),
+        ("标普500", 50.0, "美股"),
+        ("纳斯达克100", 50.0, "美股"),
+    )
+    buyable: list[str] = []
+    paused: list[str] = []
+    missing: list[str] = []
+    notes: list[str] = []
+    for name, threshold, _market in rules:
+        item = indexes.get(name, {})
+        percentile = item.get("pe_percentile")
+        if percentile is None:
+            missing.append(name)
+            notes.append(f"{name}数据不足")
+            continue
+        if percentile < threshold:
+            buyable.append(name)
+            notes.append(f"{name}可买({percentile:.1f}%<{threshold:.0f}%)")
+        else:
+            paused.append(name)
+            notes.append(f"{name}暂停({percentile:.1f}%≥{threshold:.0f}%)")
+    if buyable:
+        tone = "🟢 权益有可买信号"
+    elif missing and not paused:
+        tone = "⚪ 权益数据不足"
+    else:
+        tone = "🟡 权益均暂停新增"
+    return tone, notes
+
+
 def build_status() -> dict:
     holdings_doc = load_json(HOLDINGS_PATH, {"holdings": []})
     snapshot = load_json(SNAPSHOT_PATH, {})
@@ -61,6 +95,7 @@ def build_status() -> dict:
     generated = now_cst()
     as_of = generated.date().isoformat()
     rows = []
+    indexes = snapshot.get("indexes", {})
 
     for item in holdings:
         cost = float(item.get("cost_basis") or 0)
@@ -114,8 +149,9 @@ def build_status() -> dict:
         )
 
     allocations = snapshot.get("build_plan", {}).get("allocations", [])
+    held_codes = {row["fund_code"] for row in rows}
     for allocation in allocations:
-        if allocation["fund_code"] in {row["fund_code"] for row in rows}:
+        if allocation["fund_code"] in held_codes:
             continue
         if allocation["action"] in ("buy", "double"):
             rows.append(
@@ -132,29 +168,41 @@ def build_status() -> dict:
                     "shortfall": building_principal
                     * allocation["target_percent"]
                     / 100,
-                    "decision": "可研究买入" if allocation["action"] == "buy" else "可研究加倍",
+                    "decision": "可研究买入"
+                    if allocation["action"] == "buy"
+                    else "可研究加倍",
                     "reason": allocation["reason"],
                     "nav": None,
                     "nav_date": None,
                 }
             )
 
-    if rows:
-        held = rows[0]
-        if held["decision"] == "本期不补满":
-            overall = (
-                f"🟡 观望（短债本期不催补）：短债不看 PE，第1月也不要求一次补满；"
-                f"{held['fund_code']} 长期目标还差 {money(held['shortfall'])}"
-            )
-        elif held["shortfall"] > 0:
-            overall = (
-                f"🟢 可继续建仓：进度 {total_cost / building_principal * 100:.2f}%"
-                f"；{held['fund_code']} 距目标还差 {money(held['shortfall'])}"
-            )
-        else:
-            overall = "🟡 观望（底仓已达标）：当前记录的底仓已达到目标，新增资金按估值规则判断"
+    equity_tone, equity_notes = summarize_equity(indexes)
+    short_row = next(
+        (row for row in rows if row["fund_code"] == "012773"),
+        None,
+    )
+    if short_row and short_row["decision"] == "本期不补满":
+        short_note = (
+            f"短债本期不催补（{short_row['fund_code']} 长期还差 "
+            f"{money(short_row['shortfall'])}）"
+        )
+    elif short_row and short_row["shortfall"] > 0:
+        short_note = (
+            f"短债距目标还差 {money(short_row['shortfall'])}"
+        )
     else:
-        overall = "⚪ 等待数据：尚未生成行情快照"
+        short_note = "短债按计划持有"
+    overall = f"{equity_tone}；{short_note}"
+
+    us_as_of = None
+    for name in ("标普500", "纳斯达克100"):
+        us_as_of = indexes.get(name, {}).get("date") or us_as_of
+    data_status = (
+        "market_snapshot.json 已加载" if snapshot else "尚未生成 market_snapshot.json"
+    )
+    if us_as_of and us_as_of < as_of:
+        data_status += f"；美股PE手工快照日期 {us_as_of}，可能滞后"
 
     status = {
         "as_of": as_of,
@@ -168,11 +216,10 @@ def build_status() -> dict:
         if building_principal
         else 0,
         "overall_decision": overall,
+        "equity_notes": equity_notes,
         "rows": rows,
-        "indexes": snapshot.get("indexes", {}),
-        "data_status": "market_snapshot.json 已加载"
-        if snapshot
-        else "尚未生成 market_snapshot.json",
+        "indexes": indexes,
+        "data_status": data_status,
     }
     return status
 
@@ -186,7 +233,7 @@ def render(status: dict) -> str:
         f"已投入：**{money(status['total_cost_basis'])}** · "
         f"整体建仓进度：**{status['building_progress_percent']:.2f}%**",
         f"> {status['overall_decision']}",
-        "> 状态灯：🟢 可继续建仓 · 🟡 观望/不催补 · ⚪ 等待数据",
+        "> 状态灯：🟢 可买/可建仓 · 🟡 观望/暂停/不催补 · ⚪ 等待数据",
         "> 说明：当前投入占比 = 单项已投入金额 ÷ 1万元建仓本金；目标金额 = 建仓本金 × 目标仓位。",
         "",
         "| 基金 | 代码 | 已投入 | 目标仓位 | 目标金额 | 当前投入占比 | 还差目标金额 | 今日状态 |",
@@ -199,6 +246,11 @@ def render(status: dict) -> str:
             f"{money(row['target_amount'])} | **{row['current_percent']:.2f}%** | "
             f"{money(row['shortfall'])} | {row['decision']} |"
         )
+    equity_notes = status.get("equity_notes") or []
+    if equity_notes:
+        lines.extend(["", "### 权益信号速览", ""])
+        for note in equity_notes:
+            lines.append(f"- {note}")
     lines.extend(
         [
             "",
@@ -258,7 +310,7 @@ def render(status: dict) -> str:
     lines.extend(
         [
             "",
-            "> 美股 PE 使用 `config/us_pe_snapshot.json` 中的近10年滚动PE分位口径；不同网站口径可能不同，自动任务会保留数据日期和来源。",
+            "> A股分位为近10年滚动PE；美股PE来自 `config/us_pe_snapshot.json`（需手工更新）。不同网站口径可能不同。",
         ]
     )
     lines.extend(

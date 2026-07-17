@@ -57,8 +57,18 @@ jobs:
       - name: Update README dashboard
         run: python scripts/update_portfolio_readme.py
 
+      # Commit before email so SMTP failures never block dashboard updates.
+      - name: Commit dashboard changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f README.md data/market_snapshot.json data/portfolio_status.json
+          git diff --cached --quiet || git commit -m "自动更新持仓与今日投资判断"
+          git push
+
       - name: Send trade alert email
         if: steps.mode.outputs.value != 'skip'
+        continue-on-error: true
         env:
           ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
@@ -79,12 +89,3 @@ jobs:
             EXTRA="--force"
           fi
           python scripts/send_trade_alert_email.py --monthly "${BUDGET}" ${EXTRA}
-
-      - name: Commit dashboard changes
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add README.md data/market_snapshot.json
-          git add -f data/portfolio_status.json
-          git diff --cached --quiet || git commit -m "自动更新持仓与今日投资判断"
-          git push

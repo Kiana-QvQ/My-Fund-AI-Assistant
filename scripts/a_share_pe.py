@@ -1,0 +1,78 @@
+"""Query canonical A-share PE-TTM and near-10y percentile for the project.
+
+Used by both local checks and the scheduled market snapshot job so README /
+email / build_plan share one data path.
+"""
+
+from __future__ import annotations
+
+import akshare as ak
+import pandas as pd
+
+
+INDEXES = (
+    ("沪深300", "000300"),
+    ("中证500", "000905"),
+)
+WINDOW_YEARS = 10
+
+
+def _to_float(value):
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def query_pe_snapshot(window_years: int = WINDOW_YEARS) -> dict[str, dict]:
+    result = {}
+    for symbol, code in INDEXES:
+        current = ak.stock_zh_index_value_csindex(symbol=code).iloc[0]
+        history = ak.stock_index_pe_lg(symbol=symbol).copy()
+        history["日期"] = pd.to_datetime(history["日期"])
+        history = history.sort_values("日期")
+        history["滚动市盈率"] = pd.to_numeric(
+            history["滚动市盈率"], errors="coerce"
+        )
+        history = history.dropna(subset=["滚动市盈率"])
+        if history.empty:
+            raise RuntimeError(f"{symbol} 滚动市盈率历史为空")
+
+        end = history["日期"].iloc[-1]
+        start = end - pd.DateOffset(years=window_years)
+        window = history[history["日期"] >= start]
+        pe_series = window["滚动市盈率"]
+        current_pe = float(pe_series.iloc[-1])
+        percentile = float((pe_series <= current_pe).mean() * 100)
+
+        result[symbol] = {
+            "index_code": code,
+            "date": str(current["日期"]),
+            "pe_ttm": round(current_pe, 2),
+            "pe_percentile": round(percentile, 2),
+            "window": f"近{window_years}年滚动PE分位",
+            "window_start": str(window["日期"].iloc[0].date()),
+            "window_end": str(window["日期"].iloc[-1].date()),
+            "csindex_pe_1": _to_float(current.get("市盈率1")),
+            "csindex_pe_2": _to_float(current.get("市盈率2")),
+            "history_start": str(history["日期"].iloc[0].date()),
+            "history_count": int(len(pe_series)),
+            "source": "AKShare CSIndex + Legu（近10年滚动市盈率分位）",
+        }
+    return result
+
+
+if __name__ == "__main__":
+    for name, item in query_pe_snapshot().items():
+        print(
+            f"{name}: PE={item['pe_ttm']:.2f}, "
+            f"percentile={item['pe_percentile']:.2f}%, "
+            f"window={item['window_start']}~{item['window_end']}, "
+            f"count={item['history_count']}"
+        )
+        print(
+            f"  csindex date={item['date']}, "
+            f"pe1={item['csindex_pe_1']}, pe2={item['csindex_pe_2']}"
+        )

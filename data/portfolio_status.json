@@ -1,13 +1,19 @@
 {
   "as_of": "2026-07-17",
-  "generated_at": "2026-07-17T09:46:10+08:00",
-  "updated_at_display": "2026-07-17 09:46:10 CST",
+  "generated_at": "2026-07-17T09:56:33+08:00",
+  "updated_at_display": "2026-07-17 09:56:33 CST",
   "total_cost_basis": 2000.0,
   "building_principal": 10000.0,
   "initial_build_percent": 20.0,
   "first_month_budget": 2000.0,
   "building_progress_percent": 20.0,
-  "overall_decision": "🟡 观望（短债本期不催补）：短债不看 PE，第1月也不要求一次补满；012773 长期目标还差 ¥3,100.00",
+  "overall_decision": "🟡 权益均暂停新增；短债本期不催补（012773 长期还差 ¥3,100.00）",
+  "equity_notes": [
+    "沪深300暂停(80.1%≥40%)",
+    "中证500暂停(85.8%≥40%)",
+    "标普500暂停(76.0%≥50%)",
+    "纳斯达克100暂停(72.0%≥50%)"
+  ],
   "rows": [
     {
       "fund_code": "012773",
@@ -29,23 +35,29 @@
       "index_code": "000300",
       "date": "2026-07-16",
       "pe_ttm": 13.56,
-      "pe_percentile": 63.89,
+      "pe_percentile": 80.06,
+      "window": "近10年滚动PE分位",
+      "window_start": "2016-07-18",
+      "window_end": "2026-07-16",
       "csindex_pe_1": 14.67,
       "csindex_pe_2": 17.41,
       "history_start": "2005-04-08",
-      "history_count": 5168,
-      "source": "scripts/_tmp_check_pe.py -> AKShare CSIndex + Legu"
+      "history_count": 2427,
+      "source": "AKShare CSIndex + Legu（近10年滚动市盈率分位）"
     },
     "中证500": {
       "index_code": "000905",
       "date": "2026-07-16",
       "pe_ttm": 30.18,
-      "pe_percentile": 64.32,
+      "pe_percentile": 85.78,
+      "window": "近10年滚动PE分位",
+      "window_start": "2016-07-18",
+      "window_end": "2026-07-16",
       "csindex_pe_1": 29.41,
       "csindex_pe_2": 31.73,
       "history_start": "2007-01-15",
-      "history_count": 4739,
-      "source": "scripts/_tmp_check_pe.py -> AKShare CSIndex + Legu"
+      "history_count": 2427,
+      "source": "AKShare CSIndex + Legu（近10年滚动市盈率分位）"
     },
     "标普500": {
       "pe_ttm": 27.5,
@@ -77,5 +89,5 @@
       "source": "联网核对结果：GuruFocus、dqydj、FactSet、Multpl、WorldPeratio 等公开数据源"
     }
   },
-  "data_status": "market_snapshot.json 已加载"
+  "data_status": "market_snapshot.json 已加载；美股PE手工快照日期 2026-07-15，可能滞后"
 }

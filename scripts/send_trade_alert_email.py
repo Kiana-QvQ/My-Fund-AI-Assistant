@@ -120,15 +120,34 @@ def collect_signals(snapshot: dict, monthly: float) -> dict:
     }
 
 
-def build_body(snapshot: dict, monthly: float) -> tuple[str, str]:
+def build_body(
+    snapshot: dict, monthly: float, *, force: bool = False
+) -> tuple[str, str]:
     as_of = snapshot.get("as_of", date.today().isoformat())
     now = datetime.now(CST).strftime("%Y-%m-%d %H:%M CST")
     data = collect_signals(snapshot, monthly)
 
-    title = f"【定投买入提醒】{as_of} 今日招行下单清单"
+    if data["has_buy"]:
+        title = f"【定投买入提醒】{as_of} 今日招行下单清单"
+        why = (
+            f"至少一只指数已低于策略买入分位"
+            f"（A股＜{A_SHARE_BUY_BELOW:.0f}% 或 美股＜{US_BUY_BELOW:.0f}%）。"
+        )
+        names = "、".join(data["buy_a"] + data["buy_us"])
+        subject = f"{title}｜可买：{names}"
+    else:
+        title = f"【定投联调】{as_of} 当前无买入信号"
+        why = (
+            "当前没有指数低于买入分位；本邮件仅因 --force / 手动联调而发送，"
+            "日常定时任务不会发送。"
+            if force
+            else "当前没有指数低于买入分位。"
+        )
+        subject = title
+
     a_text = "、".join(data["buy_a"]) if data["buy_a"] else "无"
     us_text = "、".join(data["buy_us"]) if data["buy_us"] else "无"
-    buy_block = "\n".join(data["buy_lines"])
+    buy_block = "\n".join(data["buy_lines"]) if data["buy_lines"] else "  · 无"
 
     body = f"""{title}
 
@@ -137,7 +156,7 @@ def build_body(snapshot: dict, monthly: float) -> tuple[str, str]:
 月定投预算：{monthly:.0f} 元
 
 【为何发这封邮件】
-至少一只指数已低于策略买入分位（A股＜{A_SHARE_BUY_BELOW:.0f}% 或 美股＜{US_BUY_BELOW:.0f}%）。
+{why}
 未达标的指数不会提醒买入；全部未达标时系统不发邮件。
 
 【策略时点】
@@ -173,8 +192,6 @@ A股可买：{a_text}
 
 — My Fund AI Assistant
 """
-    names = "、".join(data["buy_a"] + data["buy_us"])
-    subject = f"{title}｜可买：{names}"
     return subject, body
 
 
@@ -231,9 +248,18 @@ def send_email(subject: str, body: str, dry_run: bool = False) -> None:
 
     context = ssl.create_default_context()
     port = int(cfg["port"])
-    with smtplib.SMTP_SSL(cfg["host"], port, context=context) as server:
-        server.login(cfg["user"], cfg["password"])
-        server.sendmail(cfg["from"], [cfg["to"]], msg.as_string())
+    if port == 465:
+        with smtplib.SMTP_SSL(cfg["host"], port, context=context) as server:
+            server.login(cfg["user"], cfg["password"])
+            server.sendmail(cfg["from"], [cfg["to"]], msg.as_string())
+    else:
+        # Common alternative: 587 + STARTTLS
+        with smtplib.SMTP(cfg["host"], port, timeout=60) as server:
+            server.ehlo()
+            server.starttls(context=context)
+            server.ehlo()
+            server.login(cfg["user"], cfg["password"])
+            server.sendmail(cfg["from"], [cfg["to"]], msg.as_string())
     print(f"已发送至 {masked}")
 
 
@@ -265,6 +291,8 @@ def main() -> None:
     snapshot_path = Path(args.snapshot)
     if not snapshot_path.is_absolute():
         snapshot_path = ROOT / snapshot_path
+    if not snapshot_path.is_file():
+        raise SystemExit(f"找不到快照文件: {snapshot_path}")
     snapshot = load_snapshot(snapshot_path)
 
     data = collect_signals(snapshot, args.monthly)
@@ -280,7 +308,7 @@ def main() -> None:
     if not data["has_buy"] and args.force:
         print("警告：无买入信号，但已指定 --force，仍将发送联调邮件。")
 
-    subject, body = build_body(snapshot, args.monthly)
+    subject, body = build_body(snapshot, args.monthly, force=args.force)
     send_email(subject, body, dry_run=args.dry_run)
 
 

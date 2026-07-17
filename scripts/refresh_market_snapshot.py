@@ -7,16 +7,20 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from datetime import date
 from pathlib import Path
 
 import akshare as ak
 import pandas as pd
-from _tmp_check_pe import query_pe_snapshot
-
 
 ROOT = Path(__file__).resolve().parents[1]
-POLICY_PATH = ROOT / "config" / "portfolio_policy.json"
+SCRIPTS = Path(__file__).resolve().parent
+if str(SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS))
+
+from a_share_pe import query_pe_snapshot  # noqa: E402
+
 DEFAULT_OUTPUT = ROOT / "data" / "market_snapshot.json"
 US_PE_PATH = ROOT / "config" / "us_pe_snapshot.json"
 
@@ -162,15 +166,22 @@ def build_plan(principal: float, funds: list[dict], indexes: dict) -> dict:
     first_month = principal * 0.20
     allocations = []
     held_back = 0.0
+    double_extra = 0.0
     short_bond = next(item for item in funds if item["asset"] == "short_bond")
 
     for item in funds:
         fund = item["fund"]
-        planned = first_month * item["target"]
+        base = first_month * item["target"]
         action, reason = action_for(item, fund, indexes)
-        if action in ("wait",):
-            held_back += planned
+        planned = base
+        if action == "wait":
+            held_back += base
             planned = 0.0
+        elif action == "double":
+            # Policy: double equity buy; extra amount is taken from short-bond sleeve.
+            planned = base * 2
+            double_extra += base
+            reason = f"{reason}；加倍部分从短债底仓调拨"
         allocations.append(
             {
                 "fund_code": item["fund_code"],
@@ -185,11 +196,16 @@ def build_plan(principal: float, funds: list[dict], indexes: dict) -> dict:
     short_plan = next(
         row for row in allocations if row["fund_code"] == short_bond["fund_code"]
     )
-    if held_back and short_plan["action"] == "buy":
-        short_plan["planned_amount"] = round(
-            short_plan["planned_amount"] + held_back, 2
-        )
-        short_plan["reason"] += "；其余暂缓资金先留在短债底仓"
+    if short_plan["action"] == "buy":
+        adjusted = short_plan["planned_amount"] + held_back - double_extra
+        short_plan["planned_amount"] = round(max(adjusted, 0.0), 2)
+        notes = []
+        if held_back:
+            notes.append("权益暂停资金转入短债底仓")
+        if double_extra:
+            notes.append(f"已为低估加倍调出 {double_extra:.2f} 元")
+        if notes:
+            short_plan["reason"] += "；" + "；".join(notes)
 
     return {
         "principal": principal,
