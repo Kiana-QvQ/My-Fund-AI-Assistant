@@ -63,6 +63,23 @@ class OrderWindowTests(unittest.TestCase):
 
 
 class EmailSlotGateTests(unittest.TestCase):
+    def test_no_action_never_sends(self) -> None:
+        data = {
+            "has_a_action": False,
+            "has_us_action": False,
+            "has_buy": False,
+            "has_take_profit": False,
+        }
+        for slot in ("morning", "evening"):
+            ok, reason = email_mod.should_send_for_slot(data, slot, force=False)
+            self.assertFalse(ok)
+            self.assertEqual(reason, "no_trade_action")
+            ok_force, reason_force = email_mod.should_send_for_slot(
+                data, slot, force=True
+            )
+            self.assertFalse(ok_force)
+            self.assertEqual(reason_force, "no_trade_action")
+
     def test_evening_requires_a_share_action(self) -> None:
         data = {
             "has_a_action": False,

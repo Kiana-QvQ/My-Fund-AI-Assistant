@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       alert_mode:
-        description: "Email: morning / evening / force / skip / auto(=morning)"
+        description: "Email: morning / evening / force(有操作时) / skip / auto(=morning)"
         required: false
         default: auto
   schedule:

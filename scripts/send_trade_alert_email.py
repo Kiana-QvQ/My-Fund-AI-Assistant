@@ -247,42 +247,6 @@ def collect_signals(snapshot: dict, monthly: float, policy: dict) -> dict:
     }
 
 
-def build_alert_body(
-    snapshot: dict, data: dict, *, timing: dict[str, str]
-) -> tuple[str, str]:
-    as_of = timing["signal_date"]
-    now = datetime.now(CST).strftime("%Y-%m-%d %H:%M CST")
-    alerts = "\n".join(f"- {line}" for line in data["alert_lines"]) or "- （无明细）"
-    subject = f"【估值告警】{as_of} 美股估值未核验，请勿按邮件操作买入"
-    body = f"""【估值获取失败 / 未核验】
-
-生成时间：{now}
-signal_date（估值信号日）：{timing["signal_date"]}
-order_date（建议申购日）：{timing["order_date"]}
-cutoff_time：{timing["cutoff_time"]}
-
-系统未能完成美股指数估值核验（或纳指仍为未核验状态）。
-按策略硬规则：禁止输出买入提醒，请勿依据本邮件下单。
-
-【告警明细】
-{alerts}
-
-【四指数快照】
-{chr(10).join(data["rows"])}
-
-【场外申购说明】
-{timing["nav_note_qdii"]}
-
-【执行提醒】
-1. 标普500 需 Multpl 指数 PE + 近10年分位校验通过后才可自动判断。
-2. 纳斯达克100 现阶段永久未核验，永不自动生成买入信号。
-3. 严禁使用过期缓存估值继续买卖判断。
-
-— My Fund AI Assistant
-"""
-    return subject, body
-
-
 def build_body(
     snapshot: dict,
     monthly: float,
@@ -454,19 +418,24 @@ A股可买/半额：{a_text}
     return subject, body
 
 
+def has_trade_action(data: dict) -> bool:
+    """True only when user needs to buy/sell in the bank app."""
+    return bool(data.get("has_a_action") or data.get("has_us_action"))
+
+
 def should_send_for_slot(data: dict, slot: str, *, force: bool) -> tuple[bool, str]:
-    """Decide whether this slot should send (aside from SPX alert-only path)."""
-    if force:
-        return True, "force"
+    """Send only when there is a real trade action; never for valuation-only noise."""
+    if not has_trade_action(data):
+        return False, "no_trade_action"
     slot_norm = (slot or "morning").strip().lower()
+    if force:
+        return True, "force_with_action"
     if slot_norm == "evening":
         if data.get("has_a_action"):
             return True, "a_share_action"
         return False, "evening_no_a_share_action"
-    # morning: QDII/US action, or A-share reminder to order today, or SPX alert handled elsewhere
-    if data.get("has_us_action") or data.get("has_a_action"):
-        return True, "morning_action"
-    return False, "morning_no_action"
+    # morning: A-share reminder and/or US/QDII action
+    return True, "morning_action"
 
 
 def require_mail_config() -> dict[str, str]:
@@ -578,7 +547,7 @@ def send_email(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="发送定投行动提醒（买入/止盈/估值告警）；区分晚间/上午申购窗口语义"
+        description="仅在有买入/止盈等实际操作时发送提醒；区分晚间/上午申购窗口语义"
     )
     parser.add_argument("--snapshot", default=str(SNAPSHOT_PATH))
     parser.add_argument(
@@ -587,7 +556,11 @@ def main() -> None:
         default=env_float("MONTHLY_BUDGET", 300.0),
     )
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--force", action="store_true")
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="有操作时忽略时段过滤（晚间也可发美股）；无操作仍不发信",
+    )
     parser.add_argument(
         "--slot",
         choices=("morning", "evening"),
@@ -613,13 +586,22 @@ def main() -> None:
 
     data = collect_signals(snapshot, args.monthly, policy)
 
-    # SPX validation failure → alert only (no US buy already enforced).
-    if data["spx_failed"] and not data["has_buy"] and not data["has_take_profit"]:
-        if args.slot == "morning" or args.force:
-            subject, body = build_alert_body(snapshot, data, timing=timing)
-            send_email(subject, body, dry_run=args.dry_run)
-            return
-        print("晚间跳过：仅有美股核验告警，改由上午邮件处理。")
+    # SPX failure: fail-closed on buys already; do NOT email without a trade action.
+    if data["spx_failed"] and not has_trade_action(data):
+        msg = (
+            "跳过发送：美股估值未核验且无买入/止盈操作"
+            "（告警写入日志/Summary，不发空操作邮件）。"
+        )
+        print(msg)
+        for row in data["rows"]:
+            print(row)
+        for line in data["alert_lines"]:
+            print(f"告警: {line}")
+        _write_github_summary(
+            "### 邮件跳过（无操作）\n\n"
+            "- 原因: 美股核验失败或仅有告警，无银行 APP 买入/止盈动作\n"
+            "- 策略: **无操作不发信**\n"
+        )
         return
 
     should, reason = should_send_for_slot(data, args.slot, force=args.force)
@@ -627,10 +609,12 @@ def main() -> None:
         print(f"跳过发送：slot={args.slot} reason={reason}")
         for row in data["rows"]:
             print(row)
+        _write_github_summary(
+            "### 邮件跳过（无操作）\n\n"
+            f"- slot: `{args.slot}`\n"
+            f"- reason: `{reason}`\n"
+        )
         return
-
-    if not (data["has_buy"] or data["has_take_profit"]) and args.force:
-        print("警告：无行动信号，但已指定 --force，仍将发送联调邮件。")
 
     subject, body = build_body(
         snapshot,

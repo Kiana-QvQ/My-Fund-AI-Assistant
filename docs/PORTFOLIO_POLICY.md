@@ -209,9 +209,9 @@
 每封操作邮件包含：`signal_date`、`order_date`、`cutoff_time`；周末/节假日用**下一实际 A 股交易日**，不写死「明天」。
 
 #### 发送条件（摘要）
+- **无银行 APP 买入/止盈操作 → 一律不发邮件**（估值告警只写 Actions Summary）  
 - 晚间：存在 A 股买入/半额/启动仓/止盈信号才发  
 - 上午：存在 A 股或美股行动信号才发（可复述昨晚 A 股信号供今日下单）  
-- 标普核验失败且无其它行动：上午发估值告警信  
 - Secrets：`ALERT_EMAIL`、`SMTP_USER`、`SMTP_PASS`；可选 `SMTP_HOST`/`SMTP_PORT`/`MAIL_FROM`/`MONTHLY_BUDGET`
 
 ---
