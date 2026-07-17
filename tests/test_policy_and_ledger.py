@@ -287,7 +287,7 @@ class WorkflowHolidayBranchTests(unittest.TestCase):
         self.assertIn("run_us=yes", text)
         self.assertIn("Refresh US valuation only (A-share holiday)", text)
         self.assertIn("steps.gate.outputs.run != 'yes' && steps.gate.outputs.run_us == 'yes'", text)
-        self.assertIn("python -m compileall -q scripts tests", text)
+        self.assertIn("python -m compileall -q app scripts tests", text)
         self.assertIn("python -m unittest discover -s tests -v", text)
         # Email stays off on holiday / US-only path.
         self.assertIn("steps.gate.outputs.run == 'yes' && steps.mode.outputs.value != 'skip'", text)

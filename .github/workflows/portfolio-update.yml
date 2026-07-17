@@ -8,8 +8,8 @@ on:
         required: false
         default: auto
   schedule:
-    # 09:00 CST: full refresh + action email if signal (A-share trading days).
-    # 21:00 CST: full refresh only, no email (A-share trading days).
+    # Planned ~09:00 / ~21:00 CST (UTC 01:00 / 13:00). GitHub cron is best-effort
+    # and may start minutes-to-tens-of-minutes late — not minute-accurate.
     # A-share holidays: still refresh US PE / README (no A-share fund scrape / no email).
     - cron: "0 1 * * 1-5"
     - cron: "0 13 * * 1-5"
@@ -37,7 +37,7 @@ jobs:
         run: python -m pip install -r requirements-data.txt
 
       - name: Syntax check (py_compile)
-        run: python -m compileall -q scripts tests
+        run: python -m compileall -q app scripts tests
 
       - name: Unit tests
         run: python -m unittest discover -s tests -v
@@ -154,3 +154,16 @@ jobs:
       - name: Holiday US-only notice
         if: steps.gate.outputs.run != 'yes' && steps.gate.outputs.run_us == 'yes'
         run: echo "今天不是 A 股交易日：已刷新美股估值与 README，跳过邮件。"
+
+      - name: Failure notice
+        if: failure()
+        shell: bash
+        run: |
+          {
+            echo "### 工作流失败"
+            echo ""
+            echo "- 定时任务计划约 **09:00 / 21:00 CST**，GitHub 可能延迟启动，不保证整点。"
+            echo "- 若上午需要招行操作：约 **10:00 CST** 前请到 Actions 确认本次 run 是否成功。"
+            echo "- 失败不等于「今天无信号」；请查看上方失败 step 与 SMTP/交易日历 Summary。"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Workflow failed — see job Summary. Cron times are best-effort, not minute-accurate."

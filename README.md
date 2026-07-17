@@ -85,13 +85,16 @@ python scripts/record_holding.py show
 python scripts/record_holding.py buy --fund 460300 --amount 270 --note "定投"
 python scripts/record_holding.py sell --fund 460300 --proceeds 90 --cost 80 --note "止盈1/3"
 # 或按份额扣成本：--proceeds 90 --shares 10
-# 幂等：可加 --tx-id 自定义流水ID；同日同基金同金额同备注重复提交会被拒绝（--force-duplicate 可强制）
+# 幂等（北京时间 CST）：同日+同基金+同金额/份额+同备注 重复提交会被拒绝；备注不同=不同交易
+# 可加 --tx-id；确需重复入账用 --force-duplicate
 python scripts/send_trade_alert_email.py --dry-run
 python app/ai_assistant.py --mode plan --input "本月可投入300元，510300估值分位32%"
 ```
 
 买入/止盈后请用 `record_holding.py` 更新账本，README 持仓进度才会跟着变。
 同时给出 `--amount` 与 `--shares/--nav` 时，允许约 `max(0.02元, |金额|×0.5%)` 的差额，用于申购费、四舍五入和小额费用，并不要求账本金额与份额×净值完全一致。
+
+定时刷新计划约 **09:00 / 21:00 CST**，但 GitHub Actions 定时器无法保证整点启动（可能延迟数分钟到更久）。若上午要赶招行操作，建议约 **10:00 CST** 前到仓库 Actions 确认当日 run 是否成功；失败时 Job Summary 会写明原因（不等于「今天无信号」）。
 
 ## 目录
 

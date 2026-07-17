@@ -26,6 +26,11 @@ CST = timezone(timedelta(hours=8))
 AMOUNT_MATCH_TOLERANCE_RATIO = 0.005
 AMOUNT_MATCH_TOLERANCE_FLOOR = 0.02
 
+
+def today_cst() -> date:
+    """Calendar date in Asia/Shanghai — used for as_of and idempotency keys."""
+    return datetime.now(CST).date()
+
 CATALOG = {
     "012773": {
         "name": "嘉实超短债债券A",
@@ -58,7 +63,7 @@ CATALOG = {
 def load_holdings() -> dict:
     if not HOLDINGS_PATH.is_file():
         return {
-            "as_of": date.today().isoformat(),
+            "as_of": today_cst().isoformat(),
             "base_currency": "CNY",
             "building_principal": 10000.0,
             "initial_build_percent": 20.0,
@@ -71,7 +76,7 @@ def load_holdings() -> dict:
 
 
 def save_holdings(doc: dict) -> None:
-    doc["as_of"] = date.today().isoformat()
+    doc["as_of"] = today_cst().isoformat()
     doc.setdefault("transactions", [])
     HOLDINGS_PATH.write_text(
         json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
@@ -139,7 +144,7 @@ def _prepare_tx_ids(
     force_duplicate: bool = False,
 ) -> tuple[str, str]:
     """Return (transaction_id, idempotency_key); raise if duplicate."""
-    trade_date = date.today().isoformat()
+    trade_date = today_cst().isoformat()
     side = str(payload.get("side") or "")
     fund_code = str(payload.get("fund_code") or "")
     sell_cost = None
@@ -161,9 +166,10 @@ def _prepare_tx_ids(
     dup = find_duplicate_tx(doc, transaction_id=tx_id, idempotency_key=idem_key)
     if dup is not None and not force_duplicate:
         raise SystemExit(
-            "检测到重复记账（同日同基金同金额/份额/备注，或相同 transaction_id）。"
+            "检测到重复记账（北京时间同日 + 同基金 + 同金额/份额 + 同备注，"
+            "或相同 transaction_id）。"
             f" 已有流水 transaction_id={dup.get('transaction_id')}。"
-            " 若确需重复入账请加 --force-duplicate。"
+            " 备注不同视为不同交易；若确需重复入账请加 --force-duplicate。"
         )
     return tx_id, idem_key
 
@@ -178,7 +184,7 @@ def _append_tx(
     tx = {
         "transaction_id": transaction_id,
         "idempotency_key": idempotency_key,
-        "trade_date": date.today().isoformat(),
+        "trade_date": today_cst().isoformat(),
         "time": datetime.now(CST).isoformat(timespec="seconds"),
         **payload,
     }
@@ -514,7 +520,13 @@ def main() -> None:
             f" 金额与份额×净值容差为 max({AMOUNT_MATCH_TOLERANCE_FLOOR:.2f}元, "
             f"|金额|×{AMOUNT_MATCH_TOLERANCE_RATIO * 100:.1f}%)，"
             "用于申购费、四舍五入和小额费用。"
-        )
+        ),
+        epilog=(
+            "幂等规则（北京时间 CST）：同一 trade_date + side + 基金 + 金额/市值/成本/份额 "
+            "+ 备注 生成 idempotency_key；备注不同视为不同交易。"
+            "也可用 --tx-id 指定唯一流水号；重复会被拒绝，除非 --force-duplicate。"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     sub = parser.add_subparsers(dest="command", required=True)
 

@@ -297,6 +297,7 @@ class WorkflowConcurrencyTests(unittest.TestCase):
         self.assertIn("group: portfolio-dashboard", text)
         self.assertIn("cancel-in-progress: false", text)
         self.assertIn("merge_us_into_market_snapshot", text)
+        self.assertIn("python -m compileall -q app scripts tests", text)
 
 
 if __name__ == "__main__":
