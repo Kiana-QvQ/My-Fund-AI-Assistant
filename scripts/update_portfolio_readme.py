@@ -20,7 +20,12 @@ SCRIPTS = Path(__file__).resolve().parent
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-from policy_rules import decision_label, load_policy, resolve_action  # noqa: E402
+from policy_rules import (  # noqa: E402
+    bootstrap_summary_line,
+    decision_label,
+    load_policy,
+    resolve_action,
+)
 
 HOLDINGS_PATH = ROOT / "config" / "portfolio_holdings.json"
 SNAPSHOT_PATH = ROOT / "data" / "market_snapshot.json"
@@ -124,7 +129,7 @@ def summarize_equity(indexes: dict, holdings_cost: dict[str, float], principal: 
             # reference / wait / overvalued_watch
             paused.append(name)
     if buyable or bootstrap:
-        tone = "🟢 权益有可买/启动仓信号"
+        tone = "🟢 权益有可买/微建仓信号"
     elif half:
         tone = "🟢 权益半额基础定投"
     elif take_profit:
@@ -316,7 +321,7 @@ def render(status: dict) -> str:
         f"已投入：**{money(status['total_cost_basis'])}** · "
         f"整体建仓进度：**{status['building_progress_percent']:.2f}%**",
         f"> {status['overall_decision']}",
-        "> 状态灯：🟢 可买/启动仓/可建仓 · 🟠 止盈观察 · 🟡 观望/暂停/溢价暂缓 · ⚪ 等待数据",
+        "> 状态灯：🟢 可买/微建仓/可建仓 · 🟠 止盈观察 · 🟡 观望/暂停/溢价暂缓 · ⚪ 等待数据",
         "> 说明：当前投入占比 = 单项已投入金额 ÷ 1万元建仓本金；目标金额 = 建仓本金 × 目标仓位。",
         "",
         "| 基金 | 代码 | 已投入 | 目标仓位 | 目标金额 | 当前投入占比 | 还差目标金额 | 今日状态 |",
@@ -437,14 +442,14 @@ def render(status: dict) -> str:
             "",
             "> A股近10年分位分档（平衡型）：＜30%加倍 / 30%~40%满额 / 40%~60%半额 / ≥60%停买与止盈观察；"
             "美股：＜50%满额 / 50%~70%半额 / ≥70%停买。"
-            "近1年分位≤30% **且** 相对52周高点回撤≥10% 时可额外建≤目标仓15%启动仓；"
-            "回撤≥20%但十年PE仍高则只观察、不因跌幅抄底；**指数绝对点位不单独触发买入**。"
+            f"{bootstrap_summary_line(load_policy())}。"
+            "回撤≥20%但十年PE仍在停买区则只观察、不因跌幅抄底；**指数绝对点位不单独触发买入**。"
             "标普用 Multpl 指数PE，四层校验通过才可交易判断。"
             "纳指 PE 来自 QQQ（stockanalysis/yfinance）**仅供参考**；样本不足时分位显示「无统计分位」。"
-            "无持仓时高估只观察、不提示止盈。"
+            "无持仓时高估只观察、不提示止盈（但仍可按微建仓规则小额试仓）。"
             "爬虫失败严禁用过期缓存做买卖。QDII溢价＞2%暂缓买入。"
             "短债012773不看PE/回撤，按建仓计划与申购状态。"
-            "1万元本金启动仓上限约：沪深300 405 / 中证500 165 / 标普500 120 元。",
+            "1万元本金微仓：单次约沪深300 135 / 中证500 55 / 标普500 40；累计上限约 270 / 110 / 80 元。",
         ]
     )
     lines.extend(

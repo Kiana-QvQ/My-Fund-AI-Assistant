@@ -3,9 +3,9 @@
 Balanced tiering on near-10y PE (Scheme B):
   A-share: <30% double, 30%~40% full, 40%~60% half, ≥60% stop/take-profit
   US:      <50% full, 50%~70% half, ≥70% stop/take-profit
-Starter: near-1y PE ≤ threshold AND drawdown from 52w high ≥ floor
-  (may upgrade half → bootstrap while under starter cap).
-Index absolute price/level never triggers buys alone.
+Micro sleeve (bootstrap): per-index 1y PE + 52w drawdown (+ optional 10y cap);
+  may open a small position even in high-10y zones while under micro cap.
+  Index absolute price/level never triggers buys alone.
 """
 
 from __future__ import annotations
@@ -33,6 +33,37 @@ def rules(policy: dict | None = None) -> dict:
 def bootstrap_rules(policy: dict | None = None) -> dict:
     policy = policy or load_policy()
     return policy.get("bootstrap", {})
+
+
+def index_bootstrap_rules(name: str, policy: dict | None = None) -> dict:
+    """Merge global bootstrap defaults with per-index overrides."""
+    cfg = bootstrap_rules(policy)
+    by_index = cfg.get("by_index") or {}
+    specific = by_index.get(name) or {}
+    merged = {
+        "percentile_1y_at_or_below": float(
+            specific.get(
+                "percentile_1y_at_or_below",
+                cfg.get("percentile_at_or_below", 60),
+            )
+        ),
+        "require_drawdown_from_52w_high_at_or_above": float(
+            specific.get(
+                "require_drawdown_from_52w_high_at_or_above",
+                cfg.get("require_drawdown_from_52w_high_at_or_above", 0.06),
+            )
+        ),
+        "max_10y_percentile_below": specific.get("max_10y_percentile_below"),
+        "require_verified": bool(
+            specific.get("require_verified", name in US and name != "纳斯达克100")
+        ),
+        "qdii_premium_at_or_below": specific.get("qdii_premium_at_or_below"),
+    }
+    if merged["max_10y_percentile_below"] is not None:
+        merged["max_10y_percentile_below"] = float(merged["max_10y_percentile_below"])
+    if merged["qdii_premium_at_or_below"] is not None:
+        merged["qdii_premium_at_or_below"] = float(merged["qdii_premium_at_or_below"])
+    return merged
 
 
 def allocation_fraction(action: str, policy: dict | None = None) -> float:
@@ -132,7 +163,6 @@ def classify_index(
     if percentile is None:
         return "unknown", "缺少 PE 分位"
 
-    # Prefer new key; fall back to legacy ≤30 key if present in old configs.
     double_below = float(
         r.get(
             "a_share_double_invest_percentile_below",
@@ -175,7 +205,14 @@ def classify_index(
 
 def bootstrap_cap(target_amount: float, policy: dict | None = None) -> float:
     cfg = bootstrap_rules(policy)
-    frac = float(cfg.get("max_fraction_of_target", 0.15))
+    frac = float(cfg.get("max_fraction_of_target", 0.10))
+    return max(0.0, float(target_amount) * frac)
+
+
+def bootstrap_tranche(target_amount: float, policy: dict | None = None) -> float:
+    """Single micro buy size (fraction of target sleeve)."""
+    cfg = bootstrap_rules(policy)
+    frac = float(cfg.get("tranche_fraction_of_target", 0.05))
     return max(0.0, float(target_amount) * frac)
 
 
@@ -185,6 +222,17 @@ def bootstrap_remaining(
     policy: dict | None = None,
 ) -> float:
     return max(0.0, bootstrap_cap(target_amount, policy) - float(held_cost or 0))
+
+
+def bootstrap_planned_amount(
+    held_cost: float,
+    target_amount: float,
+    policy: dict | None = None,
+) -> float:
+    """This period's micro amount: min(tranche, remaining)."""
+    remaining = bootstrap_remaining(held_cost, target_amount, policy)
+    tranche = bootstrap_tranche(target_amount, policy)
+    return round(min(tranche, remaining), 2)
 
 
 def _bootstrap_allowed_for_index(name: str, policy: dict | None = None) -> bool:
@@ -200,26 +248,33 @@ def _bootstrap_allowed_for_index(name: str, policy: dict | None = None) -> bool:
     return True
 
 
-def _drawdown_ok_for_bootstrap(
-    drawdown: float | None,
-    policy: dict | None = None,
-) -> tuple[bool, str]:
+def bootstrap_summary_line(policy: dict | None = None) -> str:
     cfg = bootstrap_rules(policy)
-    need = float(cfg.get("require_drawdown_from_52w_high_at_or_above", 0.10))
-    if drawdown is None:
-        return False, "缺少相对52周高点回撤，启动仓失败关闭（不以点位单独买入）"
-    if drawdown < need:
-        return (
-            False,
-            f"近1年估值偏低但回撤仅 {drawdown * 100:.2f}% < {need * 100:.0f}% "
-            f"（相对52周高点），暂不开启动仓",
+    if not cfg.get("enabled"):
+        return "微建仓未启用"
+    max_pct = float(cfg.get("max_fraction_of_target", 0.10)) * 100
+    tranche_pct = float(cfg.get("tranche_fraction_of_target", 0.05)) * 100
+    parts = []
+    for name in ("沪深300", "中证500", "标普500"):
+        ic = index_bootstrap_rules(name, policy)
+        bit = (
+            f"{name}：1年≤{ic['percentile_1y_at_or_below']:.0f}%"
+            f"+回撤≥{ic['require_drawdown_from_52w_high_at_or_above'] * 100:.0f}%"
         )
-    return True, ""
+        if ic.get("max_10y_percentile_below") is not None:
+            bit += f"+十年＜{ic['max_10y_percentile_below']:.0f}%"
+        parts.append(bit)
+    return (
+        "分指数微建仓（"
+        + "；".join(parts)
+        + f"；单次约目标仓{tranche_pct:.0f}%、累计≤{max_pct:.0f}%；纳指不自动；点位不单独触发）"
+    )
 
 
 def try_bootstrap_action(
     name: str,
     *,
+    percentile: float | None = None,
     percentile_1y: float | None,
     drawdown_from_52w_high: float | None = None,
     premium: float | None = None,
@@ -229,54 +284,96 @@ def try_bootstrap_action(
     held_cost: float = 0.0,
     target_amount: float = 0.0,
 ) -> tuple[str, str] | None:
-    """Starter sleeve: 1y PE ≤ threshold AND 52w drawdown ≥ floor; else None."""
+    """Per-index micro sleeve; returns None if index not eligible for micro rules."""
     if not _bootstrap_allowed_for_index(name, policy):
         return None
-    if name in US and (verified is not True or tradeable is False):
+
+    ic = index_bootstrap_rules(name, policy)
+    if ic.get("require_verified") and (verified is not True or tradeable is False):
         return None
     if percentile_1y is None:
         return None
 
     cfg = bootstrap_rules(policy)
-    threshold = float(cfg.get("percentile_at_or_below", 30))
     min_amount = float(cfg.get("min_amount", 10))
     remaining = bootstrap_remaining(held_cost, target_amount, policy)
     if remaining < min_amount:
         return None
+
+    threshold = float(ic["percentile_1y_at_or_below"])
+    need = float(ic["require_drawdown_from_52w_high_at_or_above"])
+    max_10y = ic.get("max_10y_percentile_below")
+
+    if max_10y is not None:
+        if percentile is None:
+            return None
+        if percentile >= max_10y:
+            return (
+                "wait",
+                f"微建仓：近10年分位 {percentile:.2f}% ≥ {max_10y:.0f}% 安全上限，不开微仓",
+            )
+
     if percentile_1y > threshold:
         return None
 
-    ok_dd, dd_reason = _drawdown_ok_for_bootstrap(drawdown_from_52w_high, policy)
-    if not ok_dd:
-        return "wait", dd_reason
+    if drawdown_from_52w_high is None:
+        return (
+            "wait",
+            "缺少相对52周高点回撤，微建仓失败关闭（不以点位单独买入）",
+        )
+    if drawdown_from_52w_high < need:
+        return (
+            "wait",
+            f"近1年分位达标但回撤仅 {drawdown_from_52w_high * 100:.2f}% < "
+            f"{need * 100:.0f}%（相对52周高点），暂不开微建仓",
+        )
+
+    deep = float(cfg.get("deep_drawdown_observe_at_or_above", 0.20))
+    if (
+        percentile is not None
+        and drawdown_from_52w_high >= deep
+        and deep_drawdown_observe_reason(percentile, drawdown_from_52w_high, policy)
+    ):
+        return (
+            "wait",
+            f"回撤已深（≥{deep * 100:.0f}%）且十年估值仍高，只观察、不开微建仓",
+        )
 
     r = rules(policy)
-    premium_pause = float(r.get("qdii_premium_pause_above", 0.02))
+    premium_cap = ic.get("qdii_premium_at_or_below")
+    if premium_cap is None and name in US:
+        premium_cap = float(r.get("qdii_premium_pause_above", 0.02))
     premium_resume = float(r.get("qdii_premium_resume_below", 0.01))
-    if name in US:
-        if premium is not None and premium > premium_pause:
+    if name in US and premium_cap is not None:
+        if premium is not None and premium > premium_cap:
             return (
                 "premium_block",
-                f"启动仓条件满足但 QDII溢价 {premium * 100:.2f}% > "
-                f"{premium_pause * 100:.0f}%，暂缓买入",
+                f"微建仓条件满足但 QDII溢价 {premium * 100:.2f}% > "
+                f"{premium_cap * 100:.0f}%，暂缓买入",
             )
         if premium is not None and premium > premium_resume:
             return (
                 "wait",
-                f"启动仓：近1年分位 {percentile_1y:.2f}% ≤ {threshold:.0f}% "
+                f"微建仓：近1年分位 {percentile_1y:.2f}% ≤ {threshold:.0f}% "
                 f"且回撤 {drawdown_from_52w_high * 100:.2f}% "
                 f"但溢价 {premium * 100:.2f}% 仍高于 {premium_resume * 100:.0f}%，等待回落",
             )
 
-    need = float(cfg.get("require_drawdown_from_52w_high_at_or_above", 0.10))
     cap = bootstrap_cap(target_amount, policy)
-    assert drawdown_from_52w_high is not None
+    tranche = bootstrap_tranche(target_amount, policy)
+    planned = bootstrap_planned_amount(held_cost, target_amount, policy)
+    ten_note = (
+        f"、十年分位 {percentile:.2f}% ＜ {max_10y:.0f}%"
+        if max_10y is not None and percentile is not None
+        else ""
+    )
     return (
         "bootstrap",
-        f"启动仓：近1年分位 {percentile_1y:.2f}% ≤ {threshold:.0f}% "
-        f"且相对52周高点回撤 {drawdown_from_52w_high * 100:.2f}% ≥ {need * 100:.0f}% "
-        f"（可在半额/未满额档额外建仓；不以指数点位单独触发）；"
-        f"上限约 {cap:.0f} 元，本期待建约 {remaining:.0f} 元；之后仍按十年分位分档",
+        f"微建仓：近1年分位 {percentile_1y:.2f}% ≤ {threshold:.0f}% "
+        f"且相对52周高点回撤 {drawdown_from_52w_high * 100:.2f}% ≥ {need * 100:.0f}%"
+        f"{ten_note}（不以指数点位单独触发）；"
+        f"单次约 {tranche:.0f} 元，累计上限约 {cap:.0f} 元，本期待建约 {planned:.0f} 元；"
+        f"之后仍按十年分位主规则",
     )
 
 
@@ -293,7 +390,6 @@ def deep_drawdown_observe_reason(
     if drawdown_from_52w_high < deep:
         return None
     r = rules(policy)
-    # High = at/above take-profit / stop-new zone (not merely half-buy zone).
     a_stop = float(r.get("a_share_take_profit_percentile_at_or_above", 60))
     us_stop = float(r.get("us_take_profit_percentile_at_or_above", 70))
     high_bar = min(a_stop, us_stop)
@@ -318,7 +414,7 @@ def resolve_action(
     held_cost: float = 0.0,
     target_amount: float = 0.0,
 ) -> tuple[str, str]:
-    """Main 10y tiering first; optional starter upgrade from half; never buy on price alone."""
+    """Main 10y tiering first; optional per-index micro sleeve; never buy on price alone."""
     primary, reason = classify_index(
         name,
         percentile,
@@ -327,7 +423,7 @@ def resolve_action(
         verified=verified,
         tradeable=tradeable,
     )
-    if primary in ("buy", "double", "reference"):
+    if primary in ("buy", "double", "reference", "unknown"):
         return primary, reason
 
     held = float(held_cost or 0)
@@ -339,10 +435,10 @@ def resolve_action(
             return primary, f"{reason}；{observe}"
         return primary, reason
 
-    # Starter may upgrade half (or legacy wait) while under starter cap.
-    if primary in ("half", "wait"):
+    if primary in ("half", "wait", "take_profit", "premium_block"):
         boot = try_bootstrap_action(
             name,
+            percentile=percentile,
             percentile_1y=percentile_1y,
             drawdown_from_52w_high=drawdown_from_52w_high,
             premium=premium,
@@ -358,11 +454,19 @@ def resolve_action(
                 return action, boot_reason
             if action == "premium_block":
                 return action, boot_reason
-            # Insufficient drawdown etc.: keep half if that was primary.
             if primary == "half":
                 return primary, reason
-            if action == "wait" and primary == "wait":
+            if primary == "wait" and action == "wait":
                 return action, boot_reason
+            # take_profit / premium_block without holdings: keep micro block reason.
+            if primary == "take_profit" and held <= 0 and action == "wait":
+                observe = deep_drawdown_observe_reason(
+                    percentile, drawdown_from_52w_high, policy
+                )
+                reason_out = f"高估观察，当前无持仓无需止盈；{boot_reason}"
+                if observe:
+                    reason_out = f"{reason_out}；{observe}"
+                return "overvalued_watch", reason_out
 
     if primary == "take_profit" and held <= 0:
         observe = deep_drawdown_observe_reason(
@@ -388,6 +492,9 @@ def resolve_action(
         if observe:
             return "wait", f"{reason}；{observe}"
 
+    if primary == "premium_block":
+        return primary, reason
+
     return primary, reason
 
 
@@ -396,7 +503,7 @@ def decision_label(action: str) -> str:
         "buy": "可研究满额定投",
         "double": "可研究加倍",
         "half": "半额基础定投",
-        "bootstrap": "启动仓可建",
+        "bootstrap": "微建仓可建",
         "wait": "暂停新增",
         "take_profit": "建议分批止盈",
         "overvalued_watch": "高估观察（无持仓）",

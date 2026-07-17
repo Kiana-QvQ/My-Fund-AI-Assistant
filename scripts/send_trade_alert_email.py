@@ -26,7 +26,8 @@ if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 from policy_rules import (  # noqa: E402
-    bootstrap_remaining,
+    bootstrap_planned_amount,
+    bootstrap_summary_line,
     decision_label,
     load_policy,
     resolve_action,
@@ -96,16 +97,7 @@ def collect_signals(snapshot: dict, monthly: float, policy: dict) -> dict:
     r = rules(policy)
     a_buy = float(r.get("a_share_normal_percentile_below", 40))
     us_buy = float(r.get("us_normal_percentile_below", 50))
-    boot_cfg = policy.get("bootstrap") or {}
-    boot_line = (
-        f"近1年分位≤{float(boot_cfg.get('percentile_at_or_below', 30)):.0f}% "
-        f"且相对52周高点回撤≥"
-        f"{float(boot_cfg.get('require_drawdown_from_52w_high_at_or_above', 0.10)) * 100:.0f}% "
-        f"且未满目标仓{float(boot_cfg.get('max_fraction_of_target', 0.15)) * 100:.0f}% "
-        f"时可建启动仓（点位不单独触发）"
-        if boot_cfg.get("enabled")
-        else "启动仓未启用"
-    )
+    boot_line = bootstrap_summary_line(policy)
 
     rows: list[str] = []
     buy_a: list[str] = []
@@ -141,16 +133,8 @@ def collect_signals(snapshot: dict, monthly: float, policy: dict) -> dict:
             target_amount=target_amount,
         )
         month_slice = round(monthly * weight, 2)
-        # Align with build_plan: starter uses first-month sleeve of building principal.
-        first_month_slice = round(principal * 0.20 * weight, 2)
         if action == "bootstrap":
-            amount = round(
-                min(
-                    first_month_slice,
-                    bootstrap_remaining(held_cost, target_amount, policy),
-                ),
-                2,
-            )
+            amount = bootstrap_planned_amount(held_cost, target_amount, policy)
             has_bootstrap = True
         elif action == "double":
             amount = round(month_slice * 2, 2)
@@ -287,14 +271,14 @@ def build_body(
         if evening_focus:
             if data["buy_a"]:
                 parts.append(
-                    "A股启动仓/买入/半额" if data.get("has_bootstrap") else "A股买入/半额"
+                    "A股微建仓/买入/半额" if data.get("has_bootstrap") else "A股买入/半额"
                 )
             if data.get("take_profit_a"):
                 parts.append("A股止盈")
         else:
             if data["has_buy"]:
                 parts.append(
-                    "启动仓/买入/半额" if data.get("has_bootstrap") else "买入/半额"
+                    "微建仓/买入/半额" if data.get("has_bootstrap") else "买入/半额"
                 )
             if data["has_take_profit"]:
                 parts.append("止盈")
@@ -381,7 +365,7 @@ cutoff_time：{timing["cutoff_time"]}
 【策略时点】
 1）A股近10年分位：＜30%加倍；30%~40%满额；40%~60%半额；≥60%停买/止盈观察
 2）标普500（Multpl核验通过后）：＜{data["us_buy"]:.0f}%满额；50%~70%半额；≥70%停买/止盈观察
-3）启动仓例外：{data.get('boot_line', '')}（纳指除外）
+3）微建仓例外：{data.get('boot_line', '')}（纳指除外）
 4）纳斯达克100：估值未核验，永不自动买入
 5）QDII 场内溢价＞2% 暂缓买入
 

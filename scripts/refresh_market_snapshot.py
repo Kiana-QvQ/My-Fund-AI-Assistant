@@ -23,6 +23,7 @@ from a_share_pe import query_pe_snapshot  # noqa: E402
 from index_drawdown import attach_drawdowns  # noqa: E402
 from policy_rules import (  # noqa: E402
     allocation_fraction,
+    bootstrap_planned_amount,
     bootstrap_remaining,
     load_policy,
     resolve_action,
@@ -344,18 +345,24 @@ def build_plan(
             reason = f"{reason}；未用额度转入短债/备用金"
         elif action == "bootstrap":
             remaining = bootstrap_remaining(held, target_amount, policy)
-            planned = round(min(base, remaining), 2)
+            planned = bootstrap_planned_amount(held, target_amount, policy)
             if planned <= 0:
                 held_back += base
                 planned = 0.0
                 action = "wait"
-                reason = f"{reason}；启动仓额度已用尽"
+                reason = f"{reason}；微建仓额度已用尽"
             else:
                 bootstrap_notes.append(
-                    f"{item['name']} 启动仓约 {planned:.2f} 元（上限剩余 {remaining:.2f}）"
+                    f"{item['name']} 微建仓约 {planned:.2f} 元"
+                    f"（单次上限/剩余额度 {remaining:.2f}）"
                 )
+                # Micro replaces this sleeve's first-month DCA slice; leftover → short bond.
                 if base > planned:
                     held_back += base - planned
+                elif planned > base:
+                    # Tranche may exceed first-month sleeve; pull from short-bond sleeve.
+                    double_extra += planned - base
+                    reason = f"{reason}；超出首月份额部分从短债调拨"
         allocations.append(
             {
                 "fund_code": item["fund_code"],
@@ -375,7 +382,7 @@ def build_plan(
         short_plan["planned_amount"] = round(max(adjusted, 0.0), 2)
         notes = []
         if held_back:
-            notes.append("权益暂停/半额结余/止盈观察/启动仓结余资金转入短债底仓")
+            notes.append("权益暂停/半额结余/止盈观察/微建仓结余资金转入短债底仓")
         if double_extra:
             notes.append(f"已为低估加倍调出 {double_extra:.2f} 元")
         if notes:

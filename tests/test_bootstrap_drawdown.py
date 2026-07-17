@@ -1,4 +1,4 @@
-"""Tests for 1y PE + 52w drawdown bootstrap gate and deep-drawdown observe."""
+"""Tests for per-index micro bootstrap (1y PE + 52w drawdown + optional 10y cap)."""
 
 from __future__ import annotations
 
@@ -12,12 +12,16 @@ if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 from index_drawdown import attach_drawdowns, compute_drawdown_from_closes  # noqa: E402
-from policy_rules import load_policy, resolve_action, try_bootstrap_action  # noqa: E402
+from policy_rules import (  # noqa: E402
+    bootstrap_planned_amount,
+    load_policy,
+    resolve_action,
+    try_bootstrap_action,
+)
 
 
 class DrawdownMathTests(unittest.TestCase):
     def test_compute_drawdown_from_closes(self) -> None:
-        # High 100 then last 85 → 15% drawdown.
         closes = [80.0] * 100 + [100.0] + [90.0] * 50 + [85.0]
         metrics = compute_drawdown_from_closes(closes)
         self.assertAlmostEqual(metrics["drawdown_from_52w_high"], 0.15, places=4)
@@ -29,25 +33,42 @@ class BootstrapDrawdownGateTests(unittest.TestCase):
     def setUp(self) -> None:
         self.policy = load_policy()
 
-    def test_bootstrap_requires_drawdown_and_1y_pe(self) -> None:
+    def test_hs300_micro_in_high_10y_zone(self) -> None:
+        # 10y 80% would be overvalued for main DCA, but micro may still open.
         action, reason = resolve_action(
             "沪深300",
-            55.0,  # 10y half zone
-            percentile_1y=25.0,
-            drawdown_from_52w_high=0.12,
+            80.0,
+            percentile_1y=52.0,
+            drawdown_from_52w_high=0.09,
             policy=self.policy,
             held_cost=0.0,
             target_amount=2700.0,
         )
         self.assertEqual(action, "bootstrap")
-        self.assertIn("52周", reason)
+        self.assertIn("微建仓", reason)
+        self.assertAlmostEqual(
+            bootstrap_planned_amount(0.0, 2700.0, self.policy), 135.0, places=2
+        )
+
+    def test_csi500_blocked_by_10y_safety_cap(self) -> None:
+        action, reason = resolve_action(
+            "中证500",
+            85.78,
+            percentile_1y=66.0,
+            drawdown_from_52w_high=0.11,
+            policy=self.policy,
+            held_cost=0.0,
+            target_amount=1100.0,
+        )
+        self.assertNotEqual(action, "bootstrap")
+        self.assertIn("85", reason)
 
     def test_low_1y_pe_without_enough_drawdown_keeps_half(self) -> None:
         action, reason = resolve_action(
             "沪深300",
             55.0,
             percentile_1y=25.0,
-            drawdown_from_52w_high=0.05,
+            drawdown_from_52w_high=0.05,  # < 6%
             policy=self.policy,
             held_cost=0.0,
             target_amount=2700.0,
@@ -56,34 +77,34 @@ class BootstrapDrawdownGateTests(unittest.TestCase):
         self.assertIn("基础定投", reason)
 
     def test_drawdown_alone_never_upgrades_to_bootstrap(self) -> None:
-        # Deep drawdown but 1y PE still high → stay on half, no starter.
         action, reason = resolve_action(
             "沪深300",
             55.0,
-            percentile_1y=55.0,
+            percentile_1y=65.0,  # > 60% HS300 micro gate
             drawdown_from_52w_high=0.25,
             policy=self.policy,
             held_cost=0.0,
             target_amount=2700.0,
         )
         self.assertEqual(action, "half")
-        self.assertNotIn("启动仓", reason)
+        self.assertNotIn("微建仓", reason)
 
-    def test_high_10y_pe_no_bootstrap_even_if_1y_and_drawdown_ok(self) -> None:
+    def test_10y_at_or_above_85_blocks_hs300(self) -> None:
         action, _ = resolve_action(
             "沪深300",
-            80.0,  # take-profit / overvalued zone
-            percentile_1y=20.0,
-            drawdown_from_52w_high=0.15,
+            85.0,
+            percentile_1y=40.0,
+            drawdown_from_52w_high=0.10,
             policy=self.policy,
             held_cost=0.0,
             target_amount=2700.0,
         )
-        self.assertEqual(action, "overvalued_watch")
+        self.assertNotEqual(action, "bootstrap")
 
     def test_missing_drawdown_fail_closed_on_starter(self) -> None:
         result = try_bootstrap_action(
             "沪深300",
+            percentile=50.0,
             percentile_1y=20.0,
             drawdown_from_52w_high=None,
             policy=self.policy,
@@ -143,6 +164,36 @@ class BootstrapDrawdownGateTests(unittest.TestCase):
         )
         self.assertEqual(action, "half")
         self.assertIn("50%", reason)
+
+    def test_spx_micro_requires_verified_and_drawdown(self) -> None:
+        action, reason = resolve_action(
+            "标普500",
+            75.0,
+            percentile_1y=55.0,
+            drawdown_from_52w_high=0.09,
+            premium=0.01,
+            policy=self.policy,
+            verified=True,
+            tradeable=True,
+            held_cost=0.0,
+            target_amount=800.0,
+        )
+        self.assertEqual(action, "bootstrap")
+        self.assertIn("微建仓", reason)
+
+    def test_ndx_never_micro(self) -> None:
+        action, _ = resolve_action(
+            "纳斯达克100",
+            50.0,
+            percentile_1y=10.0,
+            drawdown_from_52w_high=0.20,
+            policy=self.policy,
+            verified=False,
+            tradeable=False,
+            held_cost=0.0,
+            target_amount=300.0,
+        )
+        self.assertEqual(action, "reference")
 
     def test_attach_drawdowns_merges_fields(self) -> None:
         indexes = {"沪深300": {"pe_percentile": 50.0}}
