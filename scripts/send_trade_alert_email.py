@@ -14,7 +14,7 @@ import os
 import smtplib
 import ssl
 import sys
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
@@ -32,6 +32,7 @@ from policy_rules import (  # noqa: E402
     resolve_action,
     rules,
 )
+from trading_calendar import resolve_order_window, today_cst  # noqa: E402
 
 SNAPSHOT_PATH = ROOT / "data" / "market_snapshot.json"
 HOLDINGS_PATH = ROOT / "config" / "portfolio_holdings.json"
@@ -111,6 +112,8 @@ def collect_signals(snapshot: dict, monthly: float, policy: dict) -> dict:
     buy_us: list[str] = []
     buy_lines: list[str] = []
     take_profit_lines: list[str] = []
+    take_profit_a: list[str] = []
+    take_profit_us: list[str] = []
     alert_lines: list[str] = list(us_meta.get("alerts") or [])
     paused_amount = 0.0
     spx_failed = False
@@ -206,6 +209,10 @@ def collect_signals(snapshot: dict, monthly: float, policy: dict) -> dict:
                 f"  · {fund_name}（{code}）建议赎回约 "
                 f"{held_cost / 3:.2f}~{held_cost / 2:.2f} 元（当前账本 {held_cost:.2f}）"
             )
+            if name in A_SHARE:
+                take_profit_a.append(name)
+            else:
+                take_profit_us.append(name)
             paused_amount += month_slice
         else:
             paused_amount += month_slice
@@ -228,6 +235,10 @@ def collect_signals(snapshot: dict, monthly: float, policy: dict) -> dict:
         "has_buy": bool(buy_a or buy_us),
         "has_bootstrap": has_bootstrap,
         "has_take_profit": bool(take_profit_lines),
+        "take_profit_a": take_profit_a,
+        "take_profit_us": take_profit_us,
+        "has_a_action": bool(buy_a or take_profit_a),
+        "has_us_action": bool(buy_us or take_profit_us),
         "has_us_alert": spx_failed or bool(alert_lines),
         "a_buy": a_buy,
         "us_buy": us_buy,
@@ -236,15 +247,19 @@ def collect_signals(snapshot: dict, monthly: float, policy: dict) -> dict:
     }
 
 
-def build_alert_body(snapshot: dict, data: dict) -> tuple[str, str]:
-    as_of = snapshot.get("as_of", date.today().isoformat())
+def build_alert_body(
+    snapshot: dict, data: dict, *, timing: dict[str, str]
+) -> tuple[str, str]:
+    as_of = timing["signal_date"]
     now = datetime.now(CST).strftime("%Y-%m-%d %H:%M CST")
     alerts = "\n".join(f"- {line}" for line in data["alert_lines"]) or "- （无明细）"
     subject = f"【估值告警】{as_of} 美股估值未核验，请勿按邮件操作买入"
     body = f"""【估值获取失败 / 未核验】
 
 生成时间：{now}
-数据日期：{as_of}
+signal_date（估值信号日）：{timing["signal_date"]}
+order_date（建议申购日）：{timing["order_date"]}
+cutoff_time：{timing["cutoff_time"]}
 
 系统未能完成美股指数估值核验（或纳指仍为未核验状态）。
 按策略硬规则：禁止输出买入提醒，请勿依据本邮件下单。
@@ -254,6 +269,9 @@ def build_alert_body(snapshot: dict, data: dict) -> tuple[str, str]:
 
 【四指数快照】
 {chr(10).join(data["rows"])}
+
+【场外申购说明】
+{timing["nav_note_qdii"]}
 
 【执行提醒】
 1. 标普500 需 Multpl 指数 PE + 近10年分位校验通过后才可自动判断。
@@ -266,30 +284,68 @@ def build_alert_body(snapshot: dict, data: dict) -> tuple[str, str]:
 
 
 def build_body(
-    snapshot: dict, monthly: float, policy: dict, *, force: bool = False
+    snapshot: dict,
+    monthly: float,
+    policy: dict,
+    *,
+    force: bool = False,
+    slot: str = "morning",
+    timing: dict[str, str] | None = None,
 ) -> tuple[str, str]:
-    as_of = snapshot.get("as_of", date.today().isoformat())
+    timing = timing or resolve_order_window(
+        slot, as_of=snapshot.get("as_of"), today=today_cst()
+    )
     now = datetime.now(CST).strftime("%Y-%m-%d %H:%M CST")
     data = collect_signals(snapshot, monthly, policy)
-    a_buy = data["a_buy"]
-    us_buy = data["us_buy"]
+    slot_norm = timing["slot"]
 
-    if data["has_buy"] or data["has_take_profit"]:
-        title = f"【定投行动提醒】{as_of} 今日招行操作清单"
+    if slot_norm == "evening":
+        window_label = "晚间A股收盘后信号"
+        order_hint = timing["instruction"]
+    else:
+        window_label = "上午操作提醒（含QDII）"
+        order_hint = timing["instruction"]
+
+    # Evening focuses on A-share; US/QDII wait for morning premium/QDII refresh.
+    evening_focus = slot_norm == "evening"
+    buy_names = data["buy_a"] if evening_focus else (data["buy_a"] + data["buy_us"])
+    has_action_for_slot = (
+        data["has_a_action"]
+        if evening_focus
+        else (data["has_buy"] or data["has_take_profit"])
+    )
+
+    if has_action_for_slot or (
+        force and (data["has_buy"] or data["has_take_profit"])
+    ):
+        title = f"【定投行动提醒】{timing['signal_date']}｜{window_label}"
         parts = []
-        if data["has_buy"]:
-            parts.append("启动仓/买入" if data.get("has_bootstrap") else "买入")
-        if data["has_take_profit"]:
-            parts.append("止盈")
-        why = "今日存在需要人工确认的行动：" + "、".join(parts) + "。"
+        if evening_focus:
+            if data["buy_a"]:
+                parts.append(
+                    "A股启动仓/买入/半额" if data.get("has_bootstrap") else "A股买入/半额"
+                )
+            if data.get("take_profit_a"):
+                parts.append("A股止盈")
+        else:
+            if data["has_buy"]:
+                parts.append(
+                    "启动仓/买入/半额" if data.get("has_bootstrap") else "买入/半额"
+                )
+            if data["has_take_profit"]:
+                parts.append("止盈")
+        why = "存在需要人工确认的行动：" + ("、".join(parts) if parts else "联调") + "。"
         if data["spx_failed"]:
             why += " 注意：标普估值校验失败，美股买入信号已禁止。"
-        names = "、".join(data["buy_a"] + data["buy_us"])
+        if evening_focus and data.get("has_us_action"):
+            why += " 美股/QDII 信号请等上午邮件（溢价复核后再操作）。"
+        why += f" {order_hint}"
+        names = "、".join(buy_names)
         subject = (
             f"{title}｜可买：{names}" if names else f"{title}｜止盈观察"
         )
     else:
-        title = f"【定投联调】{as_of} 当前无行动信号"
+        title = f"【定投联调】{timing['signal_date']}｜{window_label}｜无行动信号"
         why = (
             "当前无买入/止盈行动；本邮件仅因 --force / 手动联调而发送。"
             if force
@@ -299,10 +355,36 @@ def build_body(
 
     a_text = "、".join(data["buy_a"]) if data["buy_a"] else "无"
     us_text = "、".join(data["buy_us"]) if data["buy_us"] else "无"
-    buy_block = "\n".join(data["buy_lines"]) if data["buy_lines"] else "  · 无"
+
+    # Filter suggested orders: evening = A-share funds only.
+    a_codes = {FUND_BY_INDEX[n][0] for n in A_SHARE}
+
+    def _is_a_line(line: str) -> bool:
+        return any(code in line for code in a_codes)
+
+    if evening_focus:
+        buy_block_lines = [line for line in data["buy_lines"] if _is_a_line(line)]
+        tp_block_lines = [
+            line for line in data["take_profit_lines"] if _is_a_line(line)
+        ]
+        us_preview_lines = [
+            f"  · （仅预览，勿今晚下单）{line.lstrip(' ·')}"
+            for line in data["buy_lines"]
+            if not _is_a_line(line)
+        ]
+    else:
+        buy_block_lines = list(data["buy_lines"])
+        tp_block_lines = list(data["take_profit_lines"])
+        us_preview_lines = []
+
+    buy_block = (
+        "\n".join(buy_block_lines + us_preview_lines)
+        if (buy_block_lines or us_preview_lines)
+        else "  · 无"
+    )
     tp_block = (
-        "\n".join(data["take_profit_lines"])
-        if data["take_profit_lines"]
+        "\n".join(tp_block_lines)
+        if tp_block_lines
         else "  · 无（账本无对应持仓时仅观察）"
     )
     alert_block = (
@@ -311,26 +393,37 @@ def build_body(
         else "- 无"
     )
 
+    focus_note = (
+        "本封为【晚间】邮件：以 A 股收盘后估值为主；请在下一个交易日 15:00 前操作。"
+        "不把今晚判断写成「今晚已按今日净值成交」。"
+        if slot_norm == "evening"
+        else "本封为【上午】邮件：可复核 QDII/溢价，并提醒今日 15:00 前执行；"
+        "此处不是「今日盘中新收盘判断」。"
+    )
+
     body = f"""{title}
 
 生成时间：{now}
-数据日期：{as_of}
-建仓本金：{data.get('principal', 10000):.0f} 元
-月定投预算：{monthly:.0f} 元
+邮件时段：{slot_norm}（{window_label}）
+signal_date（估值信号日）：{timing["signal_date"]}
+order_date（建议申购日）：{timing["order_date"]}
+cutoff_time：{timing["cutoff_time"]}
+{order_hint}
 
 【为何发这封邮件】
 {why}
+{focus_note}
 
 【策略时点】
 1）A股近10年分位：＜30%加倍；30%~40%满额；40%~60%半额；≥60%停买/止盈观察
-2）标普500（Multpl核验通过后）：＜{us_buy:.0f}%满额；50%~70%半额；≥70%停买/止盈观察
+2）标普500（Multpl核验通过后）：＜{data["us_buy"]:.0f}%满额；50%~70%半额；≥70%停买/止盈观察
 3）启动仓例外：{data.get('boot_line', '')}（纳指除外）
 4）纳斯达克100：估值未核验，永不自动买入
 5）QDII 场内溢价＞2% 暂缓买入
 
-【今日结论】
-A股可买：{a_text}
-美股可买：{us_text}
+【信号结论】
+A股可买/半额：{a_text}
+美股可买/半额：{us_text}
 
 【美股核验告警】
 {alert_block}
@@ -345,16 +438,35 @@ A股可买：{a_text}
 {tp_block}
 短债底仓：{data["short_name"]}（{data["short_code"]}）约 {data["short_total"]:.2f} 元
 
+【场外申购说明（招行/工行等）】
+- {timing["nav_note_a_share"]}
+- {timing["nav_note_qdii"]}
+- 估值信号日 ≠ 申购成交净值日：这是场外未知价机制下的正常现象。
+
 【执行提醒】
-1. 以招行 APP 实际申购/赎回状态为准。
+1. 以银行 APP 实际申购/赎回状态与基金合同为准。
 2. 买入：python scripts/record_holding.py buy --fund 代码 --amount 金额 [--nav 净值]
 3. 卖出：python scripts/record_holding.py sell --fund 代码 --proceeds 市值 --cost 成本
-   或 --proceeds 市值 --shares 份额（按持仓比例扣成本）
 4. 仅研究提醒，不构成投资建议，不会自动下单。
 
 — My Fund AI Assistant
 """
     return subject, body
+
+
+def should_send_for_slot(data: dict, slot: str, *, force: bool) -> tuple[bool, str]:
+    """Decide whether this slot should send (aside from SPX alert-only path)."""
+    if force:
+        return True, "force"
+    slot_norm = (slot or "morning").strip().lower()
+    if slot_norm == "evening":
+        if data.get("has_a_action"):
+            return True, "a_share_action"
+        return False, "evening_no_a_share_action"
+    # morning: QDII/US action, or A-share reminder to order today, or SPX alert handled elsewhere
+    if data.get("has_us_action") or data.get("has_a_action"):
+        return True, "morning_action"
+    return False, "morning_no_action"
 
 
 def require_mail_config() -> dict[str, str]:
@@ -465,7 +577,9 @@ def send_email(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="发送定投行动提醒（买入/止盈/估值告警）")
+    parser = argparse.ArgumentParser(
+        description="发送定投行动提醒（买入/止盈/估值告警）；区分晚间/上午申购窗口语义"
+    )
     parser.add_argument("--snapshot", default=str(SNAPSHOT_PATH))
     parser.add_argument(
         "--monthly",
@@ -474,6 +588,12 @@ def main() -> None:
     )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--force", action="store_true")
+    parser.add_argument(
+        "--slot",
+        choices=("morning", "evening"),
+        default="morning",
+        help="morning=今日15:00前操作提醒；evening=下一交易日15:00前操作提醒",
+    )
     args = parser.parse_args()
 
     snapshot_path = Path(args.snapshot)
@@ -483,27 +603,42 @@ def main() -> None:
         raise SystemExit(f"找不到快照文件: {snapshot_path}")
     snapshot = load_snapshot(snapshot_path)
     policy = load_policy()
+    timing = resolve_order_window(
+        args.slot, as_of=snapshot.get("as_of"), today=today_cst()
+    )
+    print(
+        f"邮件时段={timing['slot']} signal_date={timing['signal_date']} "
+        f"order_date={timing['order_date']} cutoff={timing['cutoff_time']}"
+    )
 
     data = collect_signals(snapshot, args.monthly, policy)
-    actionable = data["has_buy"] or data["has_take_profit"]
 
     # SPX validation failure → alert only (no US buy already enforced).
-    if data["spx_failed"] and not actionable and not args.force:
-        subject, body = build_alert_body(snapshot, data)
-        send_email(subject, body, dry_run=args.dry_run)
+    if data["spx_failed"] and not data["has_buy"] and not data["has_take_profit"]:
+        if args.slot == "morning" or args.force:
+            subject, body = build_alert_body(snapshot, data, timing=timing)
+            send_email(subject, body, dry_run=args.dry_run)
+            return
+        print("晚间跳过：仅有美股核验告警，改由上午邮件处理。")
         return
 
-    if not actionable and not args.force:
-        print("跳过发送：无买入/止盈信号，且标普估值校验通过（或仅有纳指未核验提示）。")
+    should, reason = should_send_for_slot(data, args.slot, force=args.force)
+    if not should:
+        print(f"跳过发送：slot={args.slot} reason={reason}")
         for row in data["rows"]:
             print(row)
         return
 
-    if not actionable and args.force:
+    if not (data["has_buy"] or data["has_take_profit"]) and args.force:
         print("警告：无行动信号，但已指定 --force，仍将发送联调邮件。")
 
     subject, body = build_body(
-        snapshot, args.monthly, policy, force=args.force
+        snapshot,
+        args.monthly,
+        policy,
+        force=args.force,
+        slot=args.slot,
+        timing=timing,
     )
     send_email(subject, body, dry_run=args.dry_run)
 

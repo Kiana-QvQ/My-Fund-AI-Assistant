@@ -120,13 +120,22 @@ class WorkflowPlanSimulationTests(unittest.TestCase):
 
     def test_trading_day_morning_can_email(self) -> None:
         plan = workflow_plan.plan_portfolio_update_steps(
-            run="yes", run_us="yes", alert_mode="auto"
+            run="yes", run_us="yes", alert_mode="morning"
         )
         self.assertTrue(plan["refresh_full"])
         self.assertFalse(plan["refresh_us_only"])
         self.assertTrue(plan["send_email"])
+        self.assertEqual(plan["email_slot"], "morning")
 
-    def test_evening_skip_email(self) -> None:
+    def test_evening_can_email_with_evening_slot(self) -> None:
+        plan = workflow_plan.plan_portfolio_update_steps(
+            run="yes", run_us="yes", alert_mode="evening"
+        )
+        self.assertTrue(plan["refresh_full"])
+        self.assertTrue(plan["send_email"])
+        self.assertEqual(plan["email_slot"], "evening")
+
+    def test_skip_mode_blocks_email(self) -> None:
         plan = workflow_plan.plan_portfolio_update_steps(
             run="yes", run_us="yes", alert_mode="skip"
         )
@@ -140,10 +149,8 @@ class WorkflowPlanSimulationTests(unittest.TestCase):
         self.assertIn("python -m compileall -q app scripts tests", text)
         self.assertIn("Failure notice", text)
         self.assertIn("steps.gate.outputs.run != 'yes' && steps.gate.outputs.run_us == 'yes'", text)
-        self.assertIn(
-            "steps.gate.outputs.run == 'yes' && steps.mode.outputs.value != 'skip'",
-            text,
-        )
+        self.assertIn("--slot", text)
+        self.assertIn("evening", text)
         # Simulated holiday path must agree with YAML intent.
         holiday = workflow_plan.plan_portfolio_update_steps(
             run="no", run_us="yes", alert_mode="skip"

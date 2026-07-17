@@ -4,13 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       alert_mode:
-        description: "Email: auto (buy/take-profit) / force / skip"
+        description: "Email: morning / evening / force / skip / auto(=morning)"
         required: false
         default: auto
   schedule:
-    # Planned ~09:00 / ~21:00 CST (UTC 01:00 / 13:00). GitHub cron is best-effort
-    # and may start minutes-to-tens-of-minutes late — not minute-accurate.
-    # A-share holidays: still refresh US PE / README (no A-share fund scrape / no email).
+    # ~09:00 CST: refresh + morning email (今日15:00前操作，含QDII)
+    # ~21:00 CST: refresh + evening email (下一交易日15:00前操作，A股收盘信号)
+    # GitHub cron is best-effort, not minute-accurate.
+    # A-share holidays: still refresh US PE / README (no email).
     - cron: "0 1 * * 1-5"
     - cron: "0 13 * * 1-5"
 
@@ -64,11 +65,14 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             MODE="${{ github.event.inputs.alert_mode }}"
             MODE="${MODE:-auto}"
+            case "${MODE}" in
+              auto) MODE="morning" ;;
+            esac
           else
             case "${{ github.event.schedule }}" in
-              "0 1 * * 1-5") MODE="auto" ;;
-              "0 13 * * 1-5") MODE="skip" ;;
-              *) MODE="auto" ;;
+              "0 1 * * 1-5") MODE="morning" ;;
+              "0 13 * * 1-5") MODE="evening" ;;
+              *) MODE="morning" ;;
             esac
             # No action email on A-share holidays (US-only refresh path).
             if [ "${{ steps.gate.outputs.run }}" != "yes" ]; then
@@ -143,11 +147,16 @@ jobs:
           else
             BUDGET="${MONTHLY_BUDGET}"
           fi
+          MODE="${{ steps.mode.outputs.value }}"
           EXTRA=""
-          if [ "${{ steps.mode.outputs.value }}" = "force" ]; then
-            EXTRA="--force"
-          fi
-          python scripts/send_trade_alert_email.py --monthly "${BUDGET}" ${EXTRA}
+          SLOT="morning"
+          case "${MODE}" in
+            evening) SLOT="evening" ;;
+            morning) SLOT="morning" ;;
+            force) SLOT="morning"; EXTRA="--force" ;;
+            *) SLOT="morning" ;;
+          esac
+          python scripts/send_trade_alert_email.py --monthly "${BUDGET}" --slot "${SLOT}" ${EXTRA}
 
       - name: Skip notice
         if: steps.gate.outputs.run != 'yes' && steps.gate.outputs.run_us != 'yes'
@@ -164,8 +173,8 @@ jobs:
           {
             echo "### 工作流失败"
             echo ""
-            echo "- 定时任务计划约 **09:00 / 21:00 CST**，GitHub 可能延迟启动，不保证整点。"
-            echo "- 若上午需要招行操作：约 **10:00 CST** 前请到 Actions 确认本次 run 是否成功。"
+            echo "- 定时任务计划约 **09:00（上午操作提醒）/ 21:00（晚间A股信号）CST**，GitHub 可能延迟启动。"
+            echo "- 若上午需要招行操作：约 **10:00 CST** 前请到 Actions 确认 morning run 是否成功。"
             echo "- 失败不等于「今天无信号」；请查看上方失败 step 与 SMTP/交易日历 Summary。"
           } >> "$GITHUB_STEP_SUMMARY"
           echo "Workflow failed — see job Summary. Cron times are best-effort, not minute-accurate."
