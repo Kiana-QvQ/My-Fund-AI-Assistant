@@ -219,7 +219,7 @@ def resolve_action(
         verified=verified,
         tradeable=tradeable,
     )
-    if primary in ("buy", "double"):
+    if primary in ("buy", "double", "reference"):
         return primary, reason
     if primary == "take_profit" and float(held_cost or 0) > 0:
         return primary, reason

@@ -135,9 +135,14 @@ def collect_signals(snapshot: dict, monthly: float, policy: dict) -> dict:
             target_amount=target_amount,
         )
         month_slice = round(monthly * weight, 2)
+        # Align with build_plan: starter uses first-month sleeve of building principal.
+        first_month_slice = round(principal * 0.20 * weight, 2)
         if action == "bootstrap":
             amount = round(
-                min(month_slice, bootstrap_remaining(held_cost, target_amount, policy)),
+                min(
+                    first_month_slice,
+                    bootstrap_remaining(held_cost, target_amount, policy),
+                ),
                 2,
             )
             has_bootstrap = True
@@ -155,10 +160,17 @@ def collect_signals(snapshot: dict, monthly: float, policy: dict) -> dict:
         )
         label = decision_label(action)
         verified_flag = item.get("verified")
+        if name in A_SHARE:
+            verify_text = "A股源"
+        elif name == "纳斯达克100":
+            verify_text = "仅参考"
+        elif verified_flag is True:
+            verify_text = "已核验"
+        else:
+            verify_text = "未核验"
         rows.append(
             f"- {name}｜PE {pe_text}｜10年分位 {pct_text}｜1年分位 {pct_1y_text}｜"
-            f"溢价 {premium_text}｜核验={'是' if verified_flag is True else '否'}｜"
-            f"{label}｜{reason}"
+            f"溢价 {premium_text}｜{verify_text}｜{label}｜{reason}"
         )
         if name == "标普500" and verified_flag is not True:
             spx_failed = True
@@ -172,8 +184,9 @@ def collect_signals(snapshot: dict, monthly: float, policy: dict) -> dict:
                 buy_a.append(name)
             else:
                 buy_us.append(name)
-            if action == "bootstrap" and month_slice > amount:
-                paused_amount += month_slice - amount
+            if action == "bootstrap":
+                # Remainder of the monthly equity sleeve stays in short bond.
+                paused_amount += max(month_slice - amount, 0.0)
         elif action == "take_profit" and held_cost > 0:
             take_profit_lines.append(
                 f"  · {fund_name}（{code}）建议赎回约 "

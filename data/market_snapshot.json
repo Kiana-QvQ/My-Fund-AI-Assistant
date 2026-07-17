@@ -73,7 +73,9 @@
       "history_start": "2005-04-08",
       "history_count": 2427,
       "history_count_1y": 243,
-      "source": "AKShare CSIndex + Legu（近10年滚动市盈率分位）"
+      "source": "AKShare CSIndex + Legu（近10年滚动市盈率分位）",
+      "verified": true,
+      "tradeable": true
     },
     "中证500": {
       "index_code": "000905",
@@ -90,7 +92,9 @@
       "history_start": "2007-01-15",
       "history_count": 2427,
       "history_count_1y": 243,
-      "source": "AKShare CSIndex + Legu（近10年滚动市盈率分位）"
+      "source": "AKShare CSIndex + Legu（近10年滚动市盈率分位）",
+      "verified": true,
+      "tradeable": true
     },
     "标普500": {
       "pe_ttm": 32.41,

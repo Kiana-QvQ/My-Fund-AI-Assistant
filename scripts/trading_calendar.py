@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import argparse
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache
 
 import akshare as ak
 import pandas as pd
+
+CST = timezone(timedelta(hours=8))
 
 
 @lru_cache(maxsize=1)
@@ -17,9 +19,13 @@ def trade_date_set() -> set[str]:
     return set(series.tolist())
 
 
+def today_cst() -> date:
+    return datetime.now(CST).date()
+
+
 def is_a_share_trading_day(day: date | str | None = None) -> bool:
     if day is None:
-        day = date.today()
+        day = today_cst()
     elif isinstance(day, str):
         day = datetime.strptime(day[:10], "%Y-%m-%d").date()
     return day.isoformat() in trade_date_set()
@@ -27,14 +33,14 @@ def is_a_share_trading_day(day: date | str | None = None) -> bool:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="检查是否为 A 股交易日")
-    parser.add_argument("--date", default=None, help="YYYY-MM-DD，默认今天")
+    parser.add_argument("--date", default=None, help="YYYY-MM-DD，默认今天(CST)")
     parser.add_argument(
         "--github-output",
         action="store_true",
         help="写出 run=yes/no 到 GITHUB_OUTPUT",
     )
     args = parser.parse_args()
-    day = args.date or date.today().isoformat()
+    day = args.date or today_cst().isoformat()
     ok = is_a_share_trading_day(day)
     print(f"{day} {'是' if ok else '不是'} A股交易日")
     if args.github_output:

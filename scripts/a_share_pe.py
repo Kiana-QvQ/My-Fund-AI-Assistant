@@ -62,6 +62,8 @@ def query_pe_snapshot(window_years: int = WINDOW_YEARS) -> dict[str, dict]:
             "pe_percentile_1y": round(percentile_1y, 2)
             if percentile_1y is not None
             else None,
+            "verified": True,
+            "tradeable": True,
             "window": f"近{window_years}年滚动PE分位",
             "window_1y": "近1年滚动PE分位（启动仓）",
             "window_start": str(window["日期"].iloc[0].date()),

@@ -1,0 +1,7 @@
+{
+  "ticker": "QQQ",
+  "field": "trailingPE",
+  "updated_at": null,
+  "points": [],
+  "note": "仅作纳指估值参考；ETF PE ≠ 纳斯达克100指数PE，禁止用于自动买卖"
+}

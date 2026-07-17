@@ -1,7 +1,7 @@
 {
   "as_of": "2026-07-17",
-  "generated_at": "2026-07-17T11:28:21+08:00",
-  "updated_at_display": "2026-07-17 11:28:21 CST",
+  "generated_at": "2026-07-17T11:32:45+08:00",
+  "updated_at_display": "2026-07-17 11:32:45 CST",
   "total_cost_basis": 2000.0,
   "building_principal": 10000.0,
   "initial_build_percent": 20.0,
@@ -46,7 +46,9 @@
       "history_start": "2005-04-08",
       "history_count": 2427,
       "history_count_1y": 243,
-      "source": "AKShare CSIndex + Legu（近10年滚动市盈率分位）"
+      "source": "AKShare CSIndex + Legu（近10年滚动市盈率分位）",
+      "verified": true,
+      "tradeable": true
     },
     "中证500": {
       "index_code": "000905",
@@ -63,7 +65,9 @@
       "history_start": "2007-01-15",
       "history_count": 2427,
       "history_count_1y": 243,
-      "source": "AKShare CSIndex + Legu（近10年滚动市盈率分位）"
+      "source": "AKShare CSIndex + Legu（近10年滚动市盈率分位）",
+      "verified": true,
+      "tradeable": true
     },
     "标普500": {
       "pe_ttm": 32.41,

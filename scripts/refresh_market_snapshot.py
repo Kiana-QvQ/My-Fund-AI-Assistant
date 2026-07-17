@@ -8,7 +8,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import akshare as ak
@@ -31,6 +31,11 @@ from us_pe import refresh_us_pe  # noqa: E402
 DEFAULT_OUTPUT = ROOT / "data" / "market_snapshot.json"
 HOLDINGS_PATH = ROOT / "config" / "portfolio_holdings.json"
 US_PE_PATH = ROOT / "config" / "us_pe_snapshot.json"
+CST = timezone(timedelta(hours=8))
+
+
+def today_cst() -> date:
+    return datetime.now(CST).date()
 
 FUNDS = [
     {
@@ -144,7 +149,7 @@ def index_snapshot() -> tuple[dict[str, dict], dict[str, dict], dict]:
         us_snapshot = refresh_us_pe()
     except Exception as exc:
         us_snapshot = {
-            "as_of": date.today().isoformat(),
+            "as_of": today_cst().isoformat(),
             "source": "refresh_failed",
             "alerts": [f"美股估值刷新异常：{exc}"],
             "us_decision_blocked": True,
@@ -247,8 +252,6 @@ def action_for(
         )
         if signal == "take_profit" and held > 0:
             return "take_profit", f"{reason}；基金暂停申购不影响止盈观察"
-        if signal == "bootstrap":
-            return "wait", f"基金当前暂停申购；{reason}"
         return "wait", f"基金当前暂停申购；{reason}"
 
     if fund["purchase_status"] not in ("开放申购", "限大额"):
@@ -271,7 +274,7 @@ def action_for(
         low = round(held / 3, 2)
         high = round(held / 2, 2)
         return "take_profit", f"{reason}；建议赎回约 {low:.2f}~{high:.2f} 元"
-    if signal in ("buy", "double", "bootstrap"):
+    if signal in ("buy", "double", "bootstrap", "premium_block", "reference"):
         return signal, reason
     return "wait", reason
 
@@ -380,7 +383,7 @@ def main() -> None:
         items.append(current)
 
     output = {
-        "as_of": date.today().isoformat(),
+        "as_of": today_cst().isoformat(),
         "funds": funds,
         "indexes": indexes,
         "qdii_premiums": premiums,
