@@ -17,6 +17,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: portfolio-dashboard
+  cancel-in-progress: false
+
 jobs:
   update:
     runs-on: ubuntu-latest
@@ -85,32 +89,18 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
+          import sys
+          sys.path.insert(0, "scripts")
+          from us_pe import merge_us_into_market_snapshot
           root = Path(".")
           snap_path = root / "data" / "market_snapshot.json"
           us_path = root / "config" / "us_pe_snapshot.json"
           if snap_path.is_file() and us_path.is_file():
               snap = json.loads(snap_path.read_text(encoding="utf-8"))
               us = json.loads(us_path.read_text(encoding="utf-8"))
-              for name, item in us.get("indexes", {}).items():
-                  prev = snap.setdefault("indexes", {}).get(name, {})
-                  merged = {**prev, **item}
-                  for key in (
-                      "qdii_premium",
-                      "qdii_premium_pct",
-                      "qdii_etf",
-                      "qdii_premium_status",
-                      "qdii_premium_reason",
-                  ):
-                      if key in prev and key not in item:
-                          merged[key] = prev[key]
-                  snap["indexes"][name] = merged
-              snap["us_meta"] = {
-                  "us_decision_blocked": us.get("us_decision_blocked", True),
-                  "nasdaq_buy_blocked": us.get("nasdaq_buy_blocked", True),
-                  "alerts": us.get("alerts", []),
-              }
+              merged = merge_us_into_market_snapshot(snap, us)
               snap_path.write_text(
-                  json.dumps(snap, ensure_ascii=False, indent=2) + "\n",
+                  json.dumps(merged, ensure_ascii=False, indent=2) + "\n",
                   encoding="utf-8",
               )
               print("merged US valuation into market_snapshot.json")

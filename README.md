@@ -85,11 +85,13 @@ python scripts/record_holding.py show
 python scripts/record_holding.py buy --fund 460300 --amount 270 --note "定投"
 python scripts/record_holding.py sell --fund 460300 --proceeds 90 --cost 80 --note "止盈1/3"
 # 或按份额扣成本：--proceeds 90 --shares 10
+# 幂等：可加 --tx-id 自定义流水ID；同日同基金同金额同备注重复提交会被拒绝（--force-duplicate 可强制）
 python scripts/send_trade_alert_email.py --dry-run
 python app/ai_assistant.py --mode plan --input "本月可投入300元，510300估值分位32%"
 ```
 
 买入/止盈后请用 `record_holding.py` 更新账本，README 持仓进度才会跟着变。
+同时给出 `--amount` 与 `--shares/--nav` 时，允许约 `max(0.02元, |金额|×0.5%)` 的差额，用于申购费、四舍五入和小额费用，并不要求账本金额与份额×净值完全一致。
 
 ## 目录
 

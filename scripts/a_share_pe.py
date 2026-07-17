@@ -15,6 +15,8 @@ INDEXES = (
     ("中证500", "000905"),
 )
 WINDOW_YEARS = 10
+CSINDEX_REQUIRED_COLUMNS = ("日期",)
+HISTORY_REQUIRED_COLUMNS = ("日期", "滚动市盈率")
 
 
 def _to_float(value):
@@ -26,11 +28,36 @@ def _to_float(value):
         return None
 
 
+def assert_akshare_csindex_contract(frame: pd.DataFrame, symbol: str) -> None:
+    if frame is None or frame.empty:
+        raise RuntimeError(f"{symbol} AKShare CSIndex 返回空表，疑似接口变更/失败")
+    missing = [col for col in CSINDEX_REQUIRED_COLUMNS if col not in frame.columns]
+    if missing:
+        raise RuntimeError(
+            f"{symbol} AKShare CSIndex 字段变更，缺少 {missing}；"
+            f"实际列={list(frame.columns)}"
+        )
+
+
+def assert_akshare_pe_history_contract(frame: pd.DataFrame, symbol: str) -> None:
+    if frame is None or frame.empty:
+        raise RuntimeError(f"{symbol} AKShare 滚动市盈率历史为空，疑似接口变更/失败")
+    missing = [col for col in HISTORY_REQUIRED_COLUMNS if col not in frame.columns]
+    if missing:
+        raise RuntimeError(
+            f"{symbol} AKShare 历史PE字段变更，缺少 {missing}；"
+            f"实际列={list(frame.columns)}"
+        )
+
+
 def query_pe_snapshot(window_years: int = WINDOW_YEARS) -> dict[str, dict]:
     result = {}
     for symbol, code in INDEXES:
-        current = ak.stock_zh_index_value_csindex(symbol=code).iloc[0]
+        current_frame = ak.stock_zh_index_value_csindex(symbol=code)
+        assert_akshare_csindex_contract(current_frame, symbol)
+        current = current_frame.iloc[0]
         history = ak.stock_index_pe_lg(symbol=symbol).copy()
+        assert_akshare_pe_history_contract(history, symbol)
         history["日期"] = pd.to_datetime(history["日期"])
         history = history.sort_values("日期")
         history["滚动市盈率"] = pd.to_numeric(

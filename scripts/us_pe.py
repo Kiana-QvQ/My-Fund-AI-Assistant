@@ -210,12 +210,14 @@ def parse_multpl_current_html(html: str, *, today: date | None = None) -> dict:
     if valuation_date is None:
         valuation_date = today
 
-    return {
+    parsed = {
         "pe_ttm": round(pe, 2),
         "date": valuation_date.isoformat(),
         "timestamp_raw": ts.group(1).strip() if ts else None,
         "source": MULTPL_HOME_URL,
     }
+    assert_multpl_current_contract(parsed)
+    return parsed
 
 
 def _cache_is_fresh(cache: dict, *, today: date | None = None) -> bool:
@@ -305,6 +307,13 @@ def validate_spx(
 def _fetch_qqq_pe_stockanalysis() -> float:
     """Scrape QQQ PE from stockanalysis.com (works when Yahoo is rate-limited)."""
     html = _http_get("https://stockanalysis.com/etf/qqq/")
+    return parse_stockanalysis_qqq_pe(html)
+
+
+def parse_stockanalysis_qqq_pe(html: str) -> float:
+    """Parse QQQ PE Ratio from stockanalysis HTML. Raises on structure drift."""
+    if not html or "QQQ" not in html.upper():
+        raise RuntimeError("stockanalysis QQQ 页面内容异常（缺少 QQQ 标识）")
     match = re.search(
         r">PE Ratio</td>\s*<td[^>]*>\s*([0-9]+(?:\.[0-9]+)?)\s*</td>",
         html,
@@ -317,11 +326,48 @@ def _fetch_qqq_pe_stockanalysis() -> float:
             re.I,
         )
     if not match:
-        raise RuntimeError("stockanalysis QQQ 页面未解析到 PE Ratio")
+        raise RuntimeError(
+            "stockanalysis QQQ 页面未解析到 PE Ratio，疑似页面字段/结构变更"
+        )
     pe = round(float(match.group(1)), 2)
     if pe <= 0 or pe > 200:
         raise RuntimeError(f"stockanalysis QQQ PE 异常: {pe}")
     return pe
+
+
+def assert_multpl_current_contract(parsed: dict) -> None:
+    required = ("pe_ttm", "date", "source")
+    missing = [key for key in required if key not in parsed]
+    if missing:
+        raise RuntimeError(f"Multpl 当前估值结构缺少字段: {missing}")
+    if not isinstance(parsed.get("pe_ttm"), (int, float)):
+        raise RuntimeError("Multpl 当前估值 pe_ttm 类型非法")
+
+
+def merge_us_into_market_snapshot(market: dict, us: dict) -> dict:
+    """Merge US PE indexes into market_snapshot (A-share holiday path)."""
+    snap = dict(market)
+    indexes = dict(snap.get("indexes") or {})
+    for name, item in (us.get("indexes") or {}).items():
+        prev = indexes.get(name, {})
+        merged = {**prev, **item}
+        for key in (
+            "qdii_premium",
+            "qdii_premium_pct",
+            "qdii_etf",
+            "qdii_premium_status",
+            "qdii_premium_reason",
+        ):
+            if key in prev and key not in item:
+                merged[key] = prev[key]
+        indexes[name] = merged
+    snap["indexes"] = indexes
+    snap["us_meta"] = {
+        "us_decision_blocked": us.get("us_decision_blocked", True),
+        "nasdaq_buy_blocked": us.get("nasdaq_buy_blocked", True),
+        "alerts": us.get("alerts", []),
+    }
+    return snap
 
 
 def _fetch_qqq_pe_yfinance() -> float:
