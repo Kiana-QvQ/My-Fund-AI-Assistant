@@ -124,7 +124,7 @@
       "history_points_1y": 12,
       "history_from_cache": true,
       "current_timestamp": "4:00 PM EDT, Fri Jul 17",
-      "fetched_at": "2026-07-18T10:49:18+08:00",
+      "fetched_at": "2026-07-18T12:10:35+08:00",
       "reason": "Multpl 指数PE=32.08，近10年分位 92.50% （样本 120），近1年分位 91.67%（月度序列来自缓存）",
       "validation_errors": [],
       "qdii_premium": 0.0342,
@@ -176,7 +176,7 @@
       "premium": 0.0342,
       "premium_pct": 3.42,
       "status": "ok",
-      "as_of": "2026-07-18T10:49:57+08:00",
+      "as_of": "2026-07-18T12:11:09+08:00",
       "reason": "场内513500 溢价 3.42%"
     },
     "纳斯达克100": {
@@ -186,7 +186,7 @@
       "premium": 0.0597,
       "premium_pct": 5.97,
       "status": "ok",
-      "as_of": "2026-07-18T10:49:57+08:00",
+      "as_of": "2026-07-18T12:11:09+08:00",
       "reason": "场内159941 溢价 5.97%"
     }
   },
