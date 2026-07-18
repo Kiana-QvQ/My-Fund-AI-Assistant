@@ -38,10 +38,10 @@
   },
   "build": {
     "沪深300": {
-      "state": "宽松观测仓 25%"
+      "state": "正式建仓 100%"
     },
     "中证500": {
-      "state": "宽松观测仓 25%"
+      "state": "正式小额底仓 50%"
     },
     "标普500": {
       "state": "QDII溢价阻断"
@@ -49,25 +49,25 @@
   },
   "build_machines": {
     "沪深300": {
-      "current_state": "宽松观测仓 25%",
-      "candidate_state": "正式建仓 100%",
+      "current_state": "正式建仓 100%",
+      "candidate_state": null,
       "candidate_count": 0,
-      "last_notified_state": "宽松观测仓 25%",
-      "last_notified_at": "2026-07-17T17:38:28+08:00"
+      "last_notified_state": "正式建仓 100%",
+      "last_notified_at": "2026-07-18T12:24:40+08:00"
     },
     "中证500": {
-      "current_state": "宽松观测仓 25%",
-      "candidate_state": "正式小额底仓 50%",
+      "current_state": "正式小额底仓 50%",
+      "candidate_state": null,
       "candidate_count": 0,
-      "last_notified_state": "宽松观测仓 25%",
-      "last_notified_at": "2026-07-17T17:38:28+08:00"
+      "last_notified_state": "正式小额底仓 50%",
+      "last_notified_at": "2026-07-18T12:24:40+08:00"
     },
     "标普500": {
       "current_state": "QDII溢价阻断",
       "candidate_state": null,
       "candidate_count": 0,
       "last_notified_state": "QDII溢价阻断",
-      "last_notified_at": "2026-07-18T10:50:01+08:00"
+      "last_notified_at": "2026-07-18T12:24:40+08:00"
     }
   },
   "dca_month": {
@@ -76,5 +76,5 @@
     "emails_sent": 1,
     "planned_monthly": 259.2
   },
-  "updated_at": "2026-07-18T12:21:37+08:00"
+  "updated_at": "2026-07-18T12:24:43+08:00"
 }
