@@ -137,7 +137,7 @@ class EmailMainIntegrationTests(unittest.TestCase):
                 email_mod.main()
 
         self.assertGreaterEqual(len(sent), 1)
-        self.assertTrue(any("定投计划" in s and "周报" in s for s in sent))
+        self.assertTrue(any("定投" in s and "周报" in s for s in sent))
         # With fingerprint change, event mail should also appear
         self.assertTrue(any("变更" in s for s in sent))
 
@@ -175,7 +175,7 @@ class EmailMainIntegrationTests(unittest.TestCase):
             ):
                 email_mod.main()
 
-        self.assertTrue(any("建仓事件" in s for s in sent))
+        self.assertTrue(any("建仓" in s for s in sent))
 
 
 if __name__ == "__main__":

@@ -28,7 +28,7 @@ if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 from alert_state import (  # noqa: E402
-    diff_fingerprint,
+    format_dca_changes,
     load_alert_state,
     save_alert_state,
 )
@@ -42,8 +42,6 @@ from build_state_machine import (  # noqa: E402
 )
 from investment_plan import (  # noqa: E402
     allocate_dca_plan,
-    build_summary_line,
-    dca_summary_line,
     fingerprint_dca,
     resolve_build_line,
     resolve_dca_line,
@@ -359,69 +357,50 @@ def build_dca_email(
     now = datetime.now(CST).strftime("%Y-%m-%d %H:%M CST")
     ops = [ln for ln in lines if ln["weekly"] > 0]
     paused = [ln for ln in lines if ln["paused"]]
-    subject = f"【定投计划】{timing['order_date']}｜{title}"
+    subject = f"【定投】{timing['order_date']}｜{title}"
     if ops:
-        names = "、".join(ln["name"] for ln in ops)
-        subject = f"{subject}｜操作：{names}"
+        subject += "｜" + "、".join(ln["name"] for ln in ops)
     elif paused:
-        subject = f"{subject}｜本周暂停权益定投"
+        subject += "｜权益暂停"
 
-    op_block = (
-        "\n".join(
-            f"  · {ln['fund_name']}（{ln['fund_code']}）本周约 {ln['weekly']:.2f} 元"
-            f"（月额度 {ln['monthly']:.0f}｜倍率 {ln['multiplier'] * 100:.0f}%）"
-            f"｜{ln['reason']}"
-            for ln in ops
-        )
-        or "  · 无（本周各标的定投均为 0）"
-    )
-    pause_block = (
-        "\n".join(f"  · {ln['name']}：{ln['reason']}" for ln in paused)
-        or "  · 无"
-    )
-    change_block = (
-        "\n".join(f"- {c}" for c in changes) if changes else "- （固定周报，无额外变更摘要）"
-    )
     total_week = sum(float(ln["weekly"]) for ln in lines)
     total_month = float((lines[0].get("month_target_total") if lines else 0) or 0)
     thursdays_left = int((lines[0].get("thursdays_left") if lines else 0) or 0)
     month_spent = float((lines[0].get("month_spent") if lines else 0) or 0)
     month_remaining = float((lines[0].get("month_remaining") if lines else 0) or 0)
 
+    op_block = (
+        "\n".join(
+            f"  · {ln['name']} {ln['fund_code']}｜本周 {ln['weekly']:.2f} 元"
+            f"（月 {ln['monthly']:.0f}｜{ln['multiplier'] * 100:.0f}%）"
+            for ln in ops
+        )
+        or "  · 本周无可申购项"
+    )
+    pause_block = (
+        "\n".join(f"  · {ln['name']}：{ln['reason']}" for ln in paused) or "  · 无"
+    )
+    change_section = ""
+    if changes:
+        change_section = (
+            "\n【变更】\n" + "\n".join(f"- {c}" for c in changes) + "\n"
+        )
+
     body = f"""{subject}
 
-生成时间：{now}
-邮件类型：定投（与建仓邮件分离）
-signal_date：{timing["signal_date"]}
-order_date：{timing["order_date"]}
-cutoff_time：{timing["cutoff_time"]}
-请在 {timing["order_date"]} 的 15:00 前于银行 APP 提交场外 A 类申购。
-
-【规则】
-{dca_summary_line(policy)}
-工资日资金留存账户，由每周四计划统一调度，无单独工资日邮件。
-
-【本月预算】
-- 本月计划总额：{total_month:.2f} 元（组合基础 300 / 封顶 1000）
-- 本月账本已记定投：{month_spent:.2f} 元；剩余可投：{month_remaining:.2f} 元
-- 本月剩余周四：{thursdays_left}；本周合计约 {total_week:.2f} 元
-- 说明：仅统计 purpose=dca / 备注含「定投」的买入；建仓等其它买入不扣定投额度。
-
-【变更摘要】
-{change_block}
-
-【本周操作】
+生成：{now}
+估值日 {timing["signal_date"]}｜请在 {timing["order_date"]} 15:00 前场外申购
+{change_section}
+【本周申购】合计约 {total_week:.2f} 元
 {op_block}
 
-【暂停/观望】
+【暂停】
 {pause_block}
 
-【说明】
-- 组合月总额按目标仓位分给 5 支；权益暂停/纳指份额并入短债。
-- 正常估值固定 100%；低估才 200%/300% 加码；总额严格 ≤1000。
-- 本周金额 = 本月剩余预算 ÷ 剩余周四（含本周），避免 5 周月超支。
-- 申购完成后请告知助手记账（`record_holding.py buy --purpose dca`），预算才会扣减。
-- 仅研究提醒，不自动下单。
+【预算】本月计划 {total_month:.0f}｜已记定投 {month_spent:.0f}｜剩余 {month_remaining:.0f}｜剩周四 {thursdays_left}
+规则：月基础 300 / 封顶 1000；≥90% 停；80%～90%→50%。工资日资金留账户，由周四计划调度。
+记账：purpose=dca → `record_holding.py buy --purpose dca`（建仓用 purpose=build）
+仅研究提醒，不自动下单。
 
 — My Fund AI Assistant
 """
@@ -436,84 +415,69 @@ def build_build_email(
     changes: list[str],
 ) -> tuple[str, str]:
     now = datetime.now(CST).strftime("%Y-%m-%d %H:%M CST")
-    changed_names = {
-        c.split(":", 1)[0].strip()
-        for c in changes
-        if ":" in c
-    }
-    focus = [ln for ln in lines if ln["name"] in changed_names] or lines
-    active = [ln for ln in focus if ln.get("active")]
-    subject = f"【建仓事件】{timing['signal_date']}｜状态变更"
-    if active:
+    changed_names: set[str] = set()
+    for c in changes:
+        if ":" in c:
+            changed_names.add(c.split(":", 1)[0].strip())
+        elif "：" in c:
+            changed_names.add(c.split("：", 1)[0].strip())
+    # Always list all watched sleeves; highlight what changed.
+    roster = list(lines)
+    active = [ln for ln in roster if ln.get("active")]
+    subject = f"【建仓】{timing['signal_date']}｜状态变更"
+    if changed_names:
+        subject += "｜" + "、".join(sorted(changed_names))
+    elif active:
         subject += "｜可建：" + "、".join(ln["name"] for ln in active)
-    else:
-        labels = "、".join(
-            str(ln.get("state") or ln.get("tier_label")) for ln in focus[:3]
-        )
-        subject += f"｜{labels}" if labels else "｜条件失效/不可买"
 
     def _fmt_metrics(ln: dict) -> str:
         pct10 = ln.get("pct_10y")
         pct1 = ln.get("pct_1y")
         dd = ln.get("dd")
         prem = ln.get("premium_pct")
-        parts = [
-            f"10年PE分位 {pct10:.2f}%"
-            if isinstance(pct10, (int, float))
-            else "10年PE分位 —",
-            f"1年PE分位 {pct1:.2f}%"
-            if isinstance(pct1, (int, float))
-            else "1年PE分位 —",
-            f"52周回撤 {dd:.2f}%" if isinstance(dd, (int, float)) else "52周回撤 —",
-            f"QDII溢价 {prem:.2f}%"
-            if isinstance(prem, (int, float))
-            else "QDII溢价 —",
-        ]
-        return "；".join(parts)
+        bits: list[str] = []
+        if isinstance(pct10, (int, float)):
+            bits.append(f"10年 {pct10:.1f}%")
+        if isinstance(pct1, (int, float)):
+            bits.append(f"1年 {pct1:.1f}%")
+        if isinstance(dd, (int, float)):
+            bits.append(f"回撤 {dd:.1f}%")
+        if isinstance(prem, (int, float)):
+            bits.append(f"溢价 {prem:.2f}%")
+        return "｜".join(bits) if bits else "—"
 
-    detail_block = (
-        "\n".join(
-            (
-                f"  · {ln['name']}｜{ln['fund_name']}（{ln['fund_code']}）\n"
-                f"    状态：{ln.get('state') or ln.get('tier_label')}\n"
-                f"    指标：{_fmt_metrics(ln)}\n"
-                f"    本次建议金额：{float(ln.get('amount') or 0):.2f} 元"
-                f"{'（可研究申购）' if ln.get('active') else '（不建议买入）'}\n"
-                f"    人工确认：{'需要' if ln.get('needs_human_confirm', True) else '否'}｜"
-                f"{ln.get('reason') or ''}"
-            )
-            for ln in focus
+    detail_lines: list[str] = []
+    for ln in roster:
+        name = ln["name"]
+        mark = "【变更】" if name in changed_names else ""
+        state = ln.get("state") or ln.get("tier_label") or "—"
+        amount = float(ln.get("amount") or 0)
+        buy_hint = "可申购" if ln.get("active") else "不买"
+        pending = ln.get("pending_confirm")
+        pending_bit = f"｜待确认：{pending}" if pending else ""
+        detail_lines.append(
+            f"  · {mark}{name} {ln.get('fund_code', '')}｜{state}"
+            f"｜建议 {amount:.0f} 元（{buy_hint}）\n"
+            f"    {_fmt_metrics(ln)}{pending_bit}\n"
+            f"    {ln.get('reason') or ''}".rstrip()
         )
-        or "  · （无明细）"
-    )
-    change_block = "\n".join(f"- {c}" for c in changes) or "- （无）"
+    detail_block = "\n".join(detail_lines) or "  · （无观察标的）"
+    change_block = "\n".join(f"- {c}" for c in changes) or "- （强制推送）"
+
     body = f"""{subject}
 
-生成时间：{now}
-邮件类型：建仓事件（不与周度定投合并）
-signal_date：{timing["signal_date"]}
-order_date：{timing["order_date"]}
-cutoff_time：{timing["cutoff_time"]}
-请在 {timing["order_date"]} 的 15:00 前于银行 APP 提交场外 A 类申购（若建议买入）。
-
-【规则】
-{build_summary_line(policy)}
+生成：{now}
+估值日 {timing["signal_date"]}｜若建议买入，请在 {timing["order_date"]} 15:00 前场外申购
 
 【状态变更】
 {change_block}
 
-【标的明细】
+【观察标的】（沪深300 / 中证500 / 标普500）
 {detail_block}
 
-【记账】
-- 定投买入：`record_holding.py buy --purpose dca`
-- 建仓买入：`record_holding.py buy --purpose build`
-- 同一状态持续不变、或仅买入金额/距目标进度变化，不会重复发信。
-- 不因「尚未买满」每日催促。
-
-【说明】
-- 场外未知价：估值日 ≠ 净值确认日属正常。
-- 仅研究提醒，不自动下单。
+规则：状态变化才发信；升级需连续 2 个交易日确认；溢价/失效/止盈/数据失败立即发。
+记账：purpose=build → `record_holding.py buy --purpose build`（定投用 purpose=dca）
+未买满不重复催促。仅研究提醒，不自动下单。
 
 — My Fund AI Assistant
 """
@@ -650,7 +614,7 @@ def main() -> None:
             ln["state"] = machine.get("current_state") or observed
             ln["tier_label"] = ln["state"]
 
-    dca_changes = diff_fingerprint(old_dca, new_dca_fp)
+    dca_changes = format_dca_changes(old_dca, new_dca_fp)
     first_run = not old_dca and not old_machines and not state.get("build")
 
     print(
