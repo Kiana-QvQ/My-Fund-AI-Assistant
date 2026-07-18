@@ -8,18 +8,18 @@
       "action": "buy"
     },
     "沪深300": {
-      "multiplier": 1.0,
-      "monthly": 81.0,
-      "weekly": 40.5,
+      "multiplier": 0.7,
+      "monthly": 56.7,
+      "weekly": 28.35,
       "paused": false,
-      "action": "buy"
+      "action": "seventy"
     },
     "中证500": {
-      "multiplier": 1.0,
-      "monthly": 33.0,
-      "weekly": 16.5,
+      "multiplier": 0.5,
+      "monthly": 16.5,
+      "weekly": 8.25,
       "paused": false,
-      "action": "buy"
+      "action": "half"
     },
     "标普500": {
       "multiplier": 0.0,
@@ -38,28 +38,43 @@
   },
   "build": {
     "沪深300": {
-      "active": true,
-      "fraction": 0.25,
-      "tier_label": "宽松观测仓",
-      "action": "bootstrap"
+      "state": "宽松观测仓 25%"
     },
     "中证500": {
-      "active": true,
-      "fraction": 0.25,
-      "tier_label": "宽松观测仓",
-      "action": "bootstrap"
+      "state": "宽松观测仓 25%"
     },
     "标普500": {
-      "active": false,
-      "fraction": 0.0,
-      "tier_label": "不可买",
-      "action": "none"
+      "state": "QDII溢价阻断"
+    }
+  },
+  "build_machines": {
+    "沪深300": {
+      "current_state": "宽松观测仓 25%",
+      "candidate_state": "正式建仓 100%",
+      "candidate_count": 0,
+      "last_notified_state": "宽松观测仓 25%",
+      "last_notified_at": "2026-07-17T17:38:28+08:00"
+    },
+    "中证500": {
+      "current_state": "宽松观测仓 25%",
+      "candidate_state": "正式小额底仓 50%",
+      "candidate_count": 0,
+      "last_notified_state": "宽松观测仓 25%",
+      "last_notified_at": "2026-07-17T17:38:28+08:00"
+    },
+    "标普500": {
+      "current_state": "QDII溢价阻断",
+      "candidate_state": null,
+      "candidate_count": 0,
+      "last_notified_state": "QDII溢价阻断",
+      "last_notified_at": "2026-07-18T10:50:01+08:00"
     }
   },
   "dca_month": {
     "year_month": "2026-07",
     "spent": 0.0,
-    "planned_monthly": 300.0
+    "emails_sent": 1,
+    "planned_monthly": 259.2
   },
-  "updated_at": "2026-07-17T17:38:28+08:00"
+  "updated_at": "2026-07-18T10:50:08+08:00"
 }
