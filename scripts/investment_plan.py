@@ -416,6 +416,106 @@ def allocate_dca_plan(
     return lines
 
 
+def apply_dca_purchase_gates(
+    lines: list[dict],
+    snapshot: dict | None,
+    *,
+    policy: dict | None = None,
+) -> list[dict]:
+    """Zero blocked buys and fold tiny equity weeks into 短债.
+
+    Gates: purchase_status / daily_limit / minimum_purchase.
+    Equity weekly below min_equity_weekly_amount → merge into residual.
+    """
+    from fund_purchase_gate import (  # noqa: WPS433
+        apply_gate_to_amount,
+        attach_fund_meta,
+        fund_record,
+    )
+
+    policy = policy or load_policy()
+    cfg = dca_config(policy)
+    min_equity = float(cfg.get("min_equity_weekly_amount", 10))
+    residual_extra = 0.0
+    out: list[dict] = []
+
+    for line in lines:
+        row = dict(line)
+        code = str(row.get("fund_code") or "")
+        fund = fund_record(snapshot, code)
+        attach_fund_meta(row, fund)
+        role = row.get("role")
+        weekly = float(row.get("weekly") or 0)
+
+        if weekly <= 0:
+            out.append(row)
+            continue
+
+        # Tiny equity sleeves: merge into short bond for bank UX
+        if role == "equity" and 0 < weekly < min_equity:
+            residual_extra = round(residual_extra + weekly, 2)
+            row["weekly"] = 0.0
+            row["monthly"] = 0.0
+            row["paused"] = True
+            row["action"] = "wait"
+            row["reason"] = (
+                f"{row.get('reason') or ''}；本周 {weekly:.2f} 元 < {min_equity:.0f} 元，"
+                f"并入短债".lstrip("；")
+            )
+            row["executable"] = False
+            out.append(row)
+            continue
+
+        new_amt, block = apply_gate_to_amount(weekly, fund)
+        if block:
+            # Equity/residual blocked → redirect equity to residual; residual stays 0
+            if role == "equity":
+                residual_extra = round(residual_extra + weekly, 2)
+            row["weekly"] = 0.0
+            row["monthly"] = 0.0
+            row["paused"] = True
+            row["action"] = "purchase_block"
+            row["reason"] = (
+                f"{row.get('reason') or ''}；{block}".lstrip("；")
+            )
+            row["executable"] = False
+            out.append(row)
+            continue
+
+        row["executable"] = True
+        row["weekly"] = new_amt
+        out.append(row)
+
+    if residual_extra > 0:
+        for row in out:
+            if row.get("role") == "residual":
+                fund = fund_record(snapshot, str(row.get("fund_code") or ""))
+                candidate = round(float(row.get("weekly") or 0) + residual_extra, 2)
+                new_amt, block = apply_gate_to_amount(candidate, fund)
+                if block:
+                    # Cannot park in short bond either — leave extra unallocated
+                    row["reason"] = (
+                        f"{row.get('reason') or ''}；拟转入 {residual_extra:.2f} 元但短债"
+                        f"不可申购：{block}".lstrip("；")
+                    )
+                    row["paused"] = True
+                    row["executable"] = False
+                    row["weekly"] = 0.0
+                else:
+                    row["weekly"] = new_amt
+                    row["paused"] = new_amt <= 0
+                    row["executable"] = new_amt > 0
+                    row["action"] = "buy" if new_amt > 0 else "wait"
+                    row["reason"] = (
+                        f"{row.get('reason') or ''}；含权益暂停/小额并入 "
+                        f"{residual_extra:.2f} 元".lstrip("；")
+                    )
+                    attach_fund_meta(row, fund)
+                break
+
+    return out
+
+
 def dca_amounts(
     multiplier: float,
     *,

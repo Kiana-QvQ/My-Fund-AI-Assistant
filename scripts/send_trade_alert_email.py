@@ -42,9 +42,15 @@ from build_state_machine import (  # noqa: E402
 )
 from investment_plan import (  # noqa: E402
     allocate_dca_plan,
+    apply_dca_purchase_gates,
     fingerprint_dca,
     resolve_build_line,
     resolve_dca_line,
+)
+from fund_purchase_gate import (  # noqa: E402
+    apply_gate_to_amount,
+    attach_fund_meta,
+    fund_record,
 )
 from policy_rules import load_policy  # noqa: E402
 from trading_calendar import (  # noqa: E402
@@ -203,6 +209,7 @@ def collect_dca(
         today=today or today_cst(),
         month_spent=month_spent,
     )
+    lines = apply_dca_purchase_gates(lines, snapshot, policy=policy)
     # Attach PE for equity sleeves
     for line in lines:
         idx = line["name"]
@@ -237,6 +244,8 @@ def collect_build(snapshot: dict, policy: dict) -> list[dict]:
         )
         line["fund_code"] = code
         line["fund_name"] = fund_name
+        fund = fund_record(snapshot, code)
+        attach_fund_meta(line, fund)
         line["pct_10y"] = item.get("pe_percentile")
         line["pct_1y"] = item.get("pe_percentile_1y")
         line["dd"] = item.get("drawdown_from_52w_high_pct")
@@ -245,6 +254,23 @@ def collect_build(snapshot: dict, policy: dict) -> list[dict]:
             item.get("qdii_premium"), (int, float)
         ):
             line["premium_pct"] = float(item["qdii_premium"]) * 100
+
+        # Purchase gate: cannot recommend buy if bank cannot accept
+        if line.get("active") and float(line.get("amount") or 0) > 0:
+            new_amt, block = apply_gate_to_amount(float(line["amount"]), fund)
+            if block:
+                line["active"] = False
+                line["amount"] = 0.0
+                line["executable"] = False
+                line["state"] = "不可买"
+                line["tier_label"] = "不可买"
+                line["action"] = "purchase_block"
+                line["reason"] = f"{line.get('reason') or ''}；{block}".lstrip("；")
+            else:
+                line["amount"] = new_amt
+                line["executable"] = True
+        else:
+            line["executable"] = False
         lines.append(line)
     return lines
 
@@ -355,8 +381,8 @@ def build_dca_email(
     changes: list[str] | None = None,
 ) -> tuple[str, str]:
     now = datetime.now(CST).strftime("%Y-%m-%d %H:%M CST")
-    ops = [ln for ln in lines if ln["weekly"] > 0]
-    paused = [ln for ln in lines if ln["paused"]]
+    ops = [ln for ln in lines if float(ln.get("weekly") or 0) > 0]
+    paused = [ln for ln in lines if ln.get("paused")]
     subject = f"【定投】{timing['order_date']}｜{title}"
     if ops:
         subject += "｜" + "、".join(ln["name"] for ln in ops)
@@ -373,12 +399,29 @@ def build_dca_email(
         "\n".join(
             f"  · {ln['name']} {ln['fund_code']}｜本周 {ln['weekly']:.2f} 元"
             f"（月 {ln['monthly']:.0f}｜{ln['multiplier'] * 100:.0f}%）"
+            f"｜{ln.get('purchase_status') or '申购状态未知'}"
             for ln in ops
         )
         or "  · 本周无可申购项"
     )
+    checklist = (
+        "\n".join(
+            f"  · {ln['fund_code']}｜{ln['name']}｜{ln['weekly']:.2f} 元｜建议申购"
+            for ln in ops
+        )
+        or "  · 无"
+    )
     pause_block = (
-        "\n".join(f"  · {ln['name']}：{ln['reason']}" for ln in paused) or "  · 无"
+        "\n".join(
+            f"  · {ln['name']}：{ln['reason']}"
+            + (
+                f"（{ln.get('purchase_status')}）"
+                if ln.get("purchase_status")
+                else ""
+            )
+            for ln in paused
+        )
+        or "  · 无"
     )
     change_section = ""
     if changes:
@@ -391,6 +434,9 @@ def build_dca_email(
 生成：{now}
 估值日 {timing["signal_date"]}｜请在 {timing["order_date"]} 15:00 前场外申购
 {change_section}
+【银行执行清单】
+{checklist}
+
 【本周申购】合计约 {total_week:.2f} 元
 {op_block}
 
@@ -398,7 +444,8 @@ def build_dca_email(
 {pause_block}
 
 【预算】本月计划 {total_month:.0f}｜已记定投 {month_spent:.0f}｜剩余 {month_remaining:.0f}｜剩周四 {thursdays_left}
-规则：月基础 300 / 封顶 1000；≥90% 停；80%～90%→50%。工资日资金留账户，由周四计划调度。
+规则：月基础 300 / 封顶 1000；≥90% 停；80%～90%→50%；权益周额＜10 元并入短债。
+QDII：溢价＞2% 停；≤1% 才恢复；中间观望。须开放申购/限大额且不超过日限额。
 记账：purpose=dca → `record_holding.py buy --purpose dca`（建仓用 purpose=build）
 仅研究提醒，不自动下单。
 
@@ -421,9 +468,12 @@ def build_build_email(
             changed_names.add(c.split(":", 1)[0].strip())
         elif "：" in c:
             changed_names.add(c.split("：", 1)[0].strip())
-    # Always list all watched sleeves; highlight what changed.
     roster = list(lines)
-    active = [ln for ln in roster if ln.get("active")]
+    active = [
+        ln
+        for ln in roster
+        if ln.get("active") and float(ln.get("amount") or 0) > 0
+    ]
     subject = f"【建仓】{timing['signal_date']}｜状态变更"
     if changed_names:
         subject += "｜" + "、".join(sorted(changed_names))
@@ -444,7 +494,19 @@ def build_build_email(
             bits.append(f"回撤 {dd:.1f}%")
         if isinstance(prem, (int, float)):
             bits.append(f"溢价 {prem:.2f}%")
+        status = ln.get("purchase_status")
+        if status:
+            bits.append(str(status))
         return "｜".join(bits) if bits else "—"
+
+    checklist = (
+        "\n".join(
+            f"  · {ln.get('fund_code')}｜{ln['name']}｜"
+            f"{float(ln.get('amount') or 0):.0f} 元｜建议申购"
+            for ln in active
+        )
+        or "  · 无可申购建仓项"
+    )
 
     detail_lines: list[str] = []
     for ln in roster:
@@ -452,7 +514,7 @@ def build_build_email(
         mark = "【变更】" if name in changed_names else ""
         state = ln.get("state") or ln.get("tier_label") or "—"
         amount = float(ln.get("amount") or 0)
-        buy_hint = "可申购" if ln.get("active") else "不买"
+        buy_hint = "可申购" if ln.get("active") and amount > 0 else "不买"
         pending = ln.get("pending_confirm")
         pending_bit = f"｜待确认：{pending}" if pending else ""
         detail_lines.append(
@@ -472,16 +534,21 @@ def build_build_email(
 【状态变更】
 {change_block}
 
+【银行执行清单】
+{checklist}
+
 【观察标的】（沪深300 / 中证500 / 标普500）
 {detail_block}
 
 规则：状态变化才发信；升级需连续 2 个交易日确认；溢价/失效/止盈/数据失败立即发。
+可买还须：开放申购/限大额、金额≤日限额、≥购买起点；QDII 溢价＞2% 停、≤1% 才恢复。
 记账：purpose=build → `record_holding.py buy --purpose build`（定投用 purpose=dca）
 未买满不重复催促。仅研究提醒，不自动下单。
 
 — My Fund AI Assistant
 """
     return subject, body
+
 
 
 def main() -> None:

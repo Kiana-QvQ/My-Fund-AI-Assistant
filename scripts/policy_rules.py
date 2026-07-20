@@ -170,7 +170,7 @@ def bootstrap_summary_line(policy: dict | None = None) -> str:
             )
         parts.append(f"{name}[{'/'.join(bits)}]")
     return (
-        "1年建仓三档（与十年定投取较高者）："
+        "1年建仓三档（独立于十年定投）："
         + "；".join(parts)
         + f"；累计≤目标仓{max_pct:.0f}%；纳指不自动；点位不单独触发"
     )

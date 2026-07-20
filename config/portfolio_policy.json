@@ -78,13 +78,14 @@
     "pause_10y_at_or_above": 90,
     "stop_boost_drawdown_below": 0.01,
     "require_drawdown_for_boost": true,
+    "min_equity_weekly_amount": 10,
     "email": {
       "weekly_thursday": true,
       "event_on_change": true,
       "max_dca_emails_per_month": 6,
       "note": "每周四固定1封周报；事件信仅档位实质变化时发。max_dca_emails_per_month 含周报+定投事件（不含建仓）。设为4≈只保留周报；设为0关闭定投邮件。"
     },
-    "note": "组合月定投总额基础300、封顶1000，按目标仓位分给5支。A股/美股同一套10年PE档：＜40%→300%；40%～50%→200%；50%～60%→150%；60%～70%→100%；70%～80%→70%；80%～90%→50%；≥90%停买/止盈。触发300%时启用组合备用资金并放大至月封顶1000；建仓规则独立不变。周四09:00周报；按剩余周四拆分且不破月封顶。"
+    "note": "组合月定投总额基础300、封顶1000，按目标仓位分给5支。权益本周金额<min_equity_weekly_amount并入短债。可买须申购开放/限大额且金额≤日限额、≥购买起点。A股/美股同一套10年PE档。周四约09:00周报（cron错峰）。"
   },
   "rules": {
     "rebalance_period": "annual",
@@ -93,7 +94,7 @@
     "qdii_premium_resume_below": 0.01,
     "a_share_take_profit_percentile_at_or_above": 90,
     "us_take_profit_percentile_at_or_above": 90,
-    "note": "展示/止盈阈值；定投倍率见 dca；建仓见 bootstrap。定投与建仓信号不合并。"
+    "note": "QDII溢价：>2%暂停；≤1%才恢复；1%<溢价≤2%继续等待。定投与建仓信号不合并。"
   },
   "bootstrap": {
     "enabled": true,

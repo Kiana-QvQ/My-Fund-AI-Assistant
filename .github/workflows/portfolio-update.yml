@@ -8,9 +8,9 @@ on:
         required: false
         default: auto
   schedule:
-    # ~09:00 CST Mon–Fri: refresh + event emails; Thursday also sends weekly DCA plan
+    # ~09:07 CST Mon–Fri (UTC 01:07, off the hour to reduce GitHub cron queue delay)
     # GitHub cron is best-effort. A-share holidays still allow fresh US/event alerts.
-    - cron: "0 1 * * 1-5"
+    - cron: "7 1 * * 1-5"
 
 permissions:
   contents: write
@@ -116,20 +116,6 @@ jobs:
         if: steps.gate.outputs.run == 'yes' || steps.gate.outputs.run_us == 'yes'
         run: python scripts/update_portfolio_readme.py
 
-      - name: Commit dashboard changes
-        if: steps.gate.outputs.run == 'yes' || steps.gate.outputs.run_us == 'yes'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f README.md data/market_snapshot.json data/portfolio_status.json
-          git add -f config/us_pe_snapshot.json data/sp500_pe_multpl.json
-          git add -f data/alert_state.json || true
-          if [ -f data/ndx_pe_yfinance_ref.json ]; then
-            git add -f data/ndx_pe_yfinance_ref.json
-          fi
-          git diff --cached --quiet || git commit -m "自动更新持仓与今日投资判断"
-          git push
-
       - name: Send DCA / build alert emails
         id: email
         if: (steps.gate.outputs.run == 'yes' || steps.gate.outputs.run_us == 'yes') && steps.mode.outputs.value != 'skip'
@@ -149,13 +135,23 @@ jobs:
             force_build) python scripts/send_trade_alert_email.py --mode force_build --persist-state ;;
             *) python scripts/send_trade_alert_email.py --mode auto --persist-state ;;
           esac
-          # Persist fingerprint even when no mail body change beyond state file
+
+      - name: Commit dashboard + alert state (single push)
+        if: steps.gate.outputs.run == 'yes' || steps.gate.outputs.run_us == 'yes'
+        run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if [ -f data/alert_state.json ]; then
-            git add -f data/alert_state.json
-            git diff --cached --quiet || git commit -m "更新定投/建仓邮件状态指纹"
-            git push || true
+          git add -f README.md data/market_snapshot.json data/portfolio_status.json
+          git add -f config/us_pe_snapshot.json data/sp500_pe_multpl.json
+          git add -f data/alert_state.json || true
+          if [ -f data/ndx_pe_yfinance_ref.json ]; then
+            git add -f data/ndx_pe_yfinance_ref.json
+          fi
+          if git diff --cached --quiet; then
+            echo "No file changes to commit."
+          else
+            git commit -m "自动更新持仓、估值与邮件状态指纹"
+            git push
           fi
 
       - name: Skip notice
