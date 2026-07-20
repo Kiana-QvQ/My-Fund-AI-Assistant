@@ -21,6 +21,15 @@
       "target_percent": 11.0,
       "asset_class": "A股宽基",
       "note": "中证500建仓"
+    },
+    {
+      "fund_code": "016452",
+      "name": "南方纳斯达克100指数发起(QDII)A",
+      "shares": null,
+      "cost_basis": 10.0,
+      "target_percent": 3.0,
+      "asset_class": "美股QDII",
+      "note": "纳斯达克100建仓"
     }
   ],
   "transactions": [
@@ -50,6 +59,20 @@
       "shares": null,
       "nav": null,
       "note": "中证500建仓",
+      "purpose": "build"
+    },
+    {
+      "transaction_id": "e2a9d865-3698-427d-912f-40f7934e47b5",
+      "idempotency_key": "f64ab708f96d7e166c5b99b6",
+      "trade_date": "2026-07-20",
+      "time": "2026-07-20T14:01:14+08:00",
+      "side": "buy",
+      "fund_code": "016452",
+      "amount": 10.0,
+      "cost_delta": 10.0,
+      "shares": null,
+      "nav": null,
+      "note": "纳斯达克100建仓",
       "purpose": "build"
     }
   ]
