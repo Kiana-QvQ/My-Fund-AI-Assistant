@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-07-17",
+  "as_of": "2026-07-20",
   "base_currency": "CNY",
   "building_principal": 10000.0,
   "initial_build_percent": 20.0,
@@ -11,7 +11,16 @@
       "cost_basis": 2000.0,
       "target_percent": 51.0,
       "asset_class": "短债基金",
-      "note": "已建仓短债；权益场外尚未买入。净值和份额待补充。"
+      "note": "已建仓短债；净值和份额待补充。"
+    },
+    {
+      "fund_code": "160119",
+      "name": "南方中证500ETF联接(LOF)A",
+      "shares": null,
+      "cost_basis": 500.0,
+      "target_percent": 11.0,
+      "asset_class": "A股宽基",
+      "note": "中证500建仓"
     }
   ],
   "transactions": [
@@ -28,6 +37,20 @@
       "nav": null,
       "note": "短债建仓（非定投）",
       "purpose": "bootstrap"
+    },
+    {
+      "transaction_id": "3a45b5fd-9de0-4332-9d78-7c68b4de800f",
+      "idempotency_key": "f27909e8b0d964b7842a981d",
+      "trade_date": "2026-07-20",
+      "time": "2026-07-20T13:58:13+08:00",
+      "side": "buy",
+      "fund_code": "160119",
+      "amount": 500.0,
+      "cost_delta": 500.0,
+      "shares": null,
+      "nav": null,
+      "note": "中证500建仓",
+      "purpose": "build"
     }
   ]
 }

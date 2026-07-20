@@ -1,12 +1,12 @@
 {
   "as_of": "2026-07-20",
-  "generated_at": "2026-07-20T13:52:20+08:00",
-  "updated_at_display": "2026-07-20 13:52:20 CST",
-  "total_cost_basis": 2000.0,
+  "generated_at": "2026-07-20T13:59:01+08:00",
+  "updated_at_display": "2026-07-20 13:59:01 CST",
+  "total_cost_basis": 2500.0,
   "building_principal": 10000.0,
   "initial_build_percent": 20.0,
   "first_month_budget": 2000.0,
-  "building_progress_percent": 20.0,
+  "building_progress_percent": 25.0,
   "overall_decision": "🟢 权益有定投信号；短债本期不催补（012773 长期还差 ¥3,100.00）",
   "equity_notes": [
     "沪深300：定投70%，1年分位42.8%，52周回撤10.5%",
@@ -30,6 +30,20 @@
       "nav_date": "2026-07-17"
     },
     {
+      "fund_code": "160119",
+      "name": "南方中证500ETF联接(LOF)A",
+      "cost_basis": 500.0,
+      "target_percent": 11.0,
+      "target_amount": 1100.0,
+      "current_percent": 5.0,
+      "deviation_percent": -6.0,
+      "shortfall": 600.0,
+      "decision": "目标未完成",
+      "reason": "目标金额 ¥1,100.00，已投入 ¥500.00，还差 ¥600.00；申购状态：开放申购",
+      "nav": 2.1307,
+      "nav_date": "2026-07-17"
+    },
+    {
       "fund_code": "460300",
       "name": "华泰柏瑞沪深300ETF联接A",
       "cost_basis": 0,
@@ -40,20 +54,6 @@
       "shortfall": 2700.0,
       "decision": "定投70%",
       "reason": "近10年分位 74.84% → 倍率 70%；组合份额约 57 元/月（总额基础300封顶1000）；未用额度转入短债/备用金",
-      "nav": null,
-      "nav_date": null
-    },
-    {
-      "fund_code": "160119",
-      "name": "南方中证500ETF联接(LOF)A",
-      "cost_basis": 0,
-      "target_percent": 11.0,
-      "target_amount": 1100.0,
-      "current_percent": 0,
-      "deviation_percent": -11.0,
-      "shortfall": 1100.0,
-      "decision": "定投50%",
-      "reason": "近10年分位 82.99% → 倍率 50%；组合份额约 16 元/月（总额基础300封顶1000）；未用额度转入短债/备用金",
       "nav": null,
       "nav_date": null
     }
@@ -170,7 +170,8 @@
     }
   },
   "holdings_cost": {
-    "012773": 2000.0
+    "012773": 2000.0,
+    "160119": 500.0
   },
   "data_status": "market_snapshot.json 已加载；标普PE已核验（Multpl，2026-07-17）；纳指参考PE 32.01（QQQ，不交易）"
 }
