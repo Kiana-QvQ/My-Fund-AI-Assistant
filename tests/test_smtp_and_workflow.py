@@ -152,6 +152,9 @@ class WorkflowPlanSimulationTests(unittest.TestCase):
         self.assertIn("--mode", text)
         self.assertIn("weekly_dca", text)
         self.assertIn("persist-state", text)
+        self.assertIn("git rebase", text)
+        self.assertIn('git push origin "HEAD:${BRANCH}"', text)
+        self.assertNotIn("git push || true", text)
         holiday = workflow_plan.plan_portfolio_update_steps(
             run="no", run_us="yes", alert_mode="skip"
         )
