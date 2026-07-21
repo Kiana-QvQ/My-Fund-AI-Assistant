@@ -1,13 +1,13 @@
 {
   "as_of": "2026-07-21",
-  "updated_at": "2026-07-21T10:40:51+08:00",
+  "updated_at": "2026-07-21T14:18:43+08:00",
   "window": "标普：Multpl近10年；纳指：QQQ参考(未核验)",
   "source": "multpl.com S&P 500 PE (current + monthly history) + local percentile; NDX QQQ PE via stockanalysis/yfinance reference-only",
   "indexes": {
     "标普500": {
-      "pe_ttm": 32.03,
-      "pe_percentile": 92.5,
-      "pe_percentile_1y": 91.67,
+      "pe_ttm": 28.64,
+      "pe_percentile": 82.5,
+      "pe_percentile_1y": 25.0,
       "verified": true,
       "tradeable": true,
       "status": "verified",
@@ -20,8 +20,8 @@
       "history_points_1y": 12,
       "history_from_cache": true,
       "current_timestamp": "4:00 PM EDT, Mon Jul 20",
-      "fetched_at": "2026-07-21T10:40:51+08:00",
-      "reason": "Multpl 指数PE=32.03，近10年分位 92.50% （样本 120），近1年分位 91.67%（月度序列来自缓存）",
+      "fetched_at": "2026-07-21T14:18:43+08:00",
+      "reason": "Multpl 指数PE=28.64，近10年分位 82.50% （样本 120），近1年分位 25.00%（月度序列来自缓存）",
       "validation_errors": []
     },
     "纳斯达克100": {
