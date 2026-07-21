@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-07-20",
+  "as_of": "2026-07-21",
   "base_currency": "CNY",
   "building_principal": 10000.0,
   "initial_build_percent": 20.0,
@@ -26,10 +26,19 @@
       "fund_code": "016452",
       "name": "南方纳斯达克100指数发起(QDII)A",
       "shares": null,
-      "cost_basis": 10.0,
+      "cost_basis": 20.0,
       "target_percent": 3.0,
       "asset_class": "美股QDII",
       "note": "纳斯达克100建仓"
+    },
+    {
+      "fund_code": "460300",
+      "name": "华泰柏瑞沪深300ETF联接A",
+      "shares": null,
+      "cost_basis": 100.0,
+      "target_percent": 27.0,
+      "asset_class": "A股宽基",
+      "note": "沪深300建仓"
     }
   ],
   "transactions": [
@@ -66,6 +75,34 @@
       "idempotency_key": "f64ab708f96d7e166c5b99b6",
       "trade_date": "2026-07-20",
       "time": "2026-07-20T14:01:14+08:00",
+      "side": "buy",
+      "fund_code": "016452",
+      "amount": 10.0,
+      "cost_delta": 10.0,
+      "shares": null,
+      "nav": null,
+      "note": "纳斯达克100建仓",
+      "purpose": "build"
+    },
+    {
+      "transaction_id": "1bf212b8-7190-4720-9001-da2b31111702",
+      "idempotency_key": "251c2a9b8c118e7f3e83fd66",
+      "trade_date": "2026-07-21",
+      "time": "2026-07-21T14:23:56+08:00",
+      "side": "buy",
+      "fund_code": "460300",
+      "amount": 100.0,
+      "cost_delta": 100.0,
+      "shares": null,
+      "nav": null,
+      "note": "沪深300建仓",
+      "purpose": "build"
+    },
+    {
+      "transaction_id": "e82289a0-b7ce-4865-a0f3-ff7cb9b3221f",
+      "idempotency_key": "b843f948fd01f9107e7628ba",
+      "trade_date": "2026-07-21",
+      "time": "2026-07-21T14:23:56+08:00",
       "side": "buy",
       "fund_code": "016452",
       "amount": 10.0,

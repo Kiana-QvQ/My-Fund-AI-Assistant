@@ -1,12 +1,12 @@
 {
   "as_of": "2026-07-21",
-  "generated_at": "2026-07-21T14:20:53+08:00",
-  "updated_at_display": "2026-07-21 14:20:53 CST",
-  "total_cost_basis": 2510.0,
+  "generated_at": "2026-07-21T14:24:28+08:00",
+  "updated_at_display": "2026-07-21 14:24:28 CST",
+  "total_cost_basis": 2620.0,
   "building_principal": 10000.0,
   "initial_build_percent": 20.0,
   "first_month_budget": 2000.0,
-  "building_progress_percent": 25.1,
+  "building_progress_percent": 26.200000000000003,
   "overall_decision": "🟢 权益半额定投；短债本期不催补（012773 长期还差 ¥3,100.00）",
   "equity_notes": [
     "沪深300：定投50%，1年分位75.2%，52周回撤9.1%",
@@ -46,30 +46,30 @@
     {
       "fund_code": "016452",
       "name": "南方纳斯达克100指数发起(QDII)A",
-      "cost_basis": 10.0,
+      "cost_basis": 20.0,
       "target_percent": 3.0,
       "target_amount": 300.0,
-      "current_percent": 0.1,
-      "deviation_percent": -2.9,
-      "shortfall": 290.0,
+      "current_percent": 0.2,
+      "deviation_percent": -2.8,
+      "shortfall": 280.0,
       "decision": "目标未完成",
-      "reason": "目标金额 ¥300.00，已投入 ¥10.00，还差 ¥290.00；申购状态：限大额",
+      "reason": "目标金额 ¥300.00，已投入 ¥20.00，还差 ¥280.00；申购状态：限大额",
       "nav": 2.2264,
       "nav_date": "2026-07-17"
     },
     {
       "fund_code": "460300",
       "name": "华泰柏瑞沪深300ETF联接A",
-      "cost_basis": 0,
+      "cost_basis": 100.0,
       "target_percent": 27.0,
       "target_amount": 2700.0,
-      "current_percent": 0,
-      "deviation_percent": -27.0,
-      "shortfall": 2700.0,
-      "decision": "定投50%",
-      "reason": "近10年分位 80.63% → 倍率 50%；组合份额约 40 元/月（总额基础300封顶1000）；未用额度转入短债/备用金",
-      "nav": null,
-      "nav_date": null
+      "current_percent": 1.0,
+      "deviation_percent": -26.0,
+      "shortfall": 2600.0,
+      "decision": "目标未完成",
+      "reason": "目标金额 ¥2,700.00，已投入 ¥100.00，还差 ¥2,600.00；申购状态：开放申购",
+      "nav": 1.1606,
+      "nav_date": "2026-07-20"
     }
   ],
   "indexes": {
@@ -186,7 +186,8 @@
   "holdings_cost": {
     "012773": 2000.0,
     "160119": 500.0,
-    "016452": 10.0
+    "016452": 20.0,
+    "460300": 100.0
   },
   "data_status": "market_snapshot.json 已加载；标普PE已核验（Multpl，2026-07-20）；纳指参考PE 32.13（QQQ，不交易）"
 }
