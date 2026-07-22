@@ -17,7 +17,7 @@
       "fund_code": "160119",
       "name": "南方中证500ETF联接(LOF)A",
       "shares": null,
-      "cost_basis": 500.0,
+      "cost_basis": 700.0,
       "target_percent": 11.0,
       "asset_class": "A股宽基",
       "note": "中证500建仓"
@@ -35,7 +35,7 @@
       "fund_code": "460300",
       "name": "华泰柏瑞沪深300ETF联接A",
       "shares": null,
-      "cost_basis": 100.0,
+      "cost_basis": 250.0,
       "target_percent": 27.0,
       "asset_class": "A股宽基",
       "note": "沪深300建仓"
@@ -124,6 +124,34 @@
       "shares": null,
       "nav": null,
       "note": "纳斯达克100建仓",
+      "purpose": "build"
+    },
+    {
+      "transaction_id": "f80e0ce9-b2a4-4d8b-bd2f-d57a97a1b1e5",
+      "idempotency_key": "5701a0826a8fbff54ff186fa",
+      "trade_date": "2026-07-22",
+      "time": "2026-07-22T14:44:46+08:00",
+      "side": "buy",
+      "fund_code": "460300",
+      "amount": 150.0,
+      "cost_delta": 150.0,
+      "shares": null,
+      "nav": null,
+      "note": "沪深300建仓",
+      "purpose": "build"
+    },
+    {
+      "transaction_id": "6520be89-ee49-4207-960d-3e93117b53d7",
+      "idempotency_key": "3dfcceca8c95feba00e1a1a5",
+      "trade_date": "2026-07-22",
+      "time": "2026-07-22T14:44:46+08:00",
+      "side": "buy",
+      "fund_code": "160119",
+      "amount": 200.0,
+      "cost_delta": 200.0,
+      "shares": null,
+      "nav": null,
+      "note": "中证500建仓",
       "purpose": "build"
     }
   ]
