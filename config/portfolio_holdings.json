@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-07-22",
+  "as_of": "2026-07-23",
   "base_currency": "CNY",
   "building_principal": 10000.0,
   "initial_build_percent": 20.0,
@@ -26,7 +26,7 @@
       "fund_code": "016452",
       "name": "南方纳斯达克100指数发起(QDII)A",
       "shares": null,
-      "cost_basis": 30.0,
+      "cost_basis": 40.0,
       "target_percent": 3.0,
       "asset_class": "美股QDII",
       "note": "纳斯达克100建仓"
@@ -152,6 +152,20 @@
       "shares": null,
       "nav": null,
       "note": "中证500建仓",
+      "purpose": "build"
+    },
+    {
+      "transaction_id": "0da75569-a2ea-4028-aa68-edd1ddd11c80",
+      "idempotency_key": "4400adc8b10af2b434d00023",
+      "trade_date": "2026-07-23",
+      "time": "2026-07-23T09:35:17+08:00",
+      "side": "buy",
+      "fund_code": "016452",
+      "amount": 10.0,
+      "cost_delta": 10.0,
+      "shares": null,
+      "nav": null,
+      "note": "纳斯达克100建仓",
       "purpose": "build"
     }
   ]
