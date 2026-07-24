@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-07-23",
+  "as_of": "2026-07-24",
   "base_currency": "CNY",
   "building_principal": 10000.0,
   "initial_build_percent": 20.0,
@@ -17,7 +17,7 @@
       "fund_code": "160119",
       "name": "南方中证500ETF联接(LOF)A",
       "shares": null,
-      "cost_basis": 750.0,
+      "cost_basis": 800.0,
       "target_percent": 11.0,
       "asset_class": "A股宽基",
       "note": "中证500建仓"
@@ -26,7 +26,7 @@
       "fund_code": "016452",
       "name": "南方纳斯达克100指数发起(QDII)A",
       "shares": null,
-      "cost_basis": 40.0,
+      "cost_basis": 50.0,
       "target_percent": 3.0,
       "asset_class": "美股QDII",
       "note": "纳斯达克100建仓"
@@ -35,7 +35,7 @@
       "fund_code": "460300",
       "name": "华泰柏瑞沪深300ETF联接A",
       "shares": null,
-      "cost_basis": 350.0,
+      "cost_basis": 450.0,
       "target_percent": 27.0,
       "asset_class": "A股宽基",
       "note": "沪深300建仓"
@@ -194,6 +194,48 @@
       "shares": null,
       "nav": null,
       "note": "沪深300建仓",
+      "purpose": "build"
+    },
+    {
+      "transaction_id": "a7a7b7b1-3a9d-46ed-bf41-406b79079dac",
+      "idempotency_key": "2fe0e42f47d6eca4e0d3cc06",
+      "trade_date": "2026-07-24",
+      "time": "2026-07-24T14:45:12+08:00",
+      "side": "buy",
+      "fund_code": "160119",
+      "amount": 50.0,
+      "cost_delta": 50.0,
+      "shares": null,
+      "nav": null,
+      "note": "中证500建仓",
+      "purpose": "build"
+    },
+    {
+      "transaction_id": "de64f1f8-95c5-49b0-a672-52f4bb7aa547",
+      "idempotency_key": "830c2d1a1b548abc30c6bb95",
+      "trade_date": "2026-07-24",
+      "time": "2026-07-24T14:45:12+08:00",
+      "side": "buy",
+      "fund_code": "460300",
+      "amount": 100.0,
+      "cost_delta": 100.0,
+      "shares": null,
+      "nav": null,
+      "note": "沪深300建仓",
+      "purpose": "build"
+    },
+    {
+      "transaction_id": "ae002d2d-f39a-4f99-a277-623a431613a4",
+      "idempotency_key": "58c8ee98923603fcc54da97e",
+      "trade_date": "2026-07-24",
+      "time": "2026-07-24T14:45:12+08:00",
+      "side": "buy",
+      "fund_code": "016452",
+      "amount": 10.0,
+      "cost_delta": 10.0,
+      "shares": null,
+      "nav": null,
+      "note": "纳斯达克100建仓",
       "purpose": "build"
     }
   ]

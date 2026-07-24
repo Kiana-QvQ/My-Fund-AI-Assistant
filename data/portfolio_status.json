@@ -1,12 +1,12 @@
 {
   "as_of": "2026-07-24",
-  "generated_at": "2026-07-24T14:32:39+08:00",
-  "updated_at_display": "2026-07-24 14:32:39 CST",
-  "total_cost_basis": 3140.0,
+  "generated_at": "2026-07-24T14:45:58+08:00",
+  "updated_at_display": "2026-07-24 14:45:58 CST",
+  "total_cost_basis": 3300.0,
   "building_principal": 10000.0,
   "initial_build_percent": 20.0,
   "first_month_budget": 2000.0,
-  "building_progress_percent": 31.4,
+  "building_progress_percent": 33.0,
   "overall_decision": "🟢 权益半额定投；短债本期不催补（012773 长期还差 ¥3,100.00）",
   "equity_notes": [
     "沪深300：定投50%，1年分位91.4%，52周回撤6.5%",
@@ -32,42 +32,42 @@
     {
       "fund_code": "160119",
       "name": "南方中证500ETF联接(LOF)A",
-      "cost_basis": 750.0,
+      "cost_basis": 800.0,
       "target_percent": 11.0,
       "target_amount": 1100.0,
-      "current_percent": 7.5,
-      "deviation_percent": -3.5,
-      "shortfall": 350.0,
+      "current_percent": 8.0,
+      "deviation_percent": -3.0,
+      "shortfall": 300.0,
       "decision": "目标未完成",
-      "reason": "目标金额 ¥1,100.00，已投入 ¥750.00，还差 ¥350.00；申购状态：开放申购",
+      "reason": "目标金额 ¥1,100.00，已投入 ¥800.00，还差 ¥300.00；申购状态：开放申购",
       "nav": 2.1908,
       "nav_date": "2026-07-23"
     },
     {
       "fund_code": "016452",
       "name": "南方纳斯达克100指数发起(QDII)A",
-      "cost_basis": 40.0,
+      "cost_basis": 50.0,
       "target_percent": 3.0,
       "target_amount": 300.0,
-      "current_percent": 0.4,
-      "deviation_percent": -2.6,
-      "shortfall": 260.0,
+      "current_percent": 0.5,
+      "deviation_percent": -2.5,
+      "shortfall": 250.0,
       "decision": "目标未完成",
-      "reason": "目标金额 ¥300.00，已投入 ¥40.00，还差 ¥260.00；申购状态：限大额",
+      "reason": "目标金额 ¥300.00，已投入 ¥50.00，还差 ¥250.00；申购状态：限大额",
       "nav": 2.2567,
       "nav_date": "2026-07-22"
     },
     {
       "fund_code": "460300",
       "name": "华泰柏瑞沪深300ETF联接A",
-      "cost_basis": 350.0,
+      "cost_basis": 450.0,
       "target_percent": 27.0,
       "target_amount": 2700.0,
-      "current_percent": 3.5000000000000004,
-      "deviation_percent": -23.5,
-      "shortfall": 2350.0,
+      "current_percent": 4.5,
+      "deviation_percent": -22.5,
+      "shortfall": 2250.0,
       "decision": "目标未完成",
-      "reason": "目标金额 ¥2,700.00，已投入 ¥350.00，还差 ¥2,350.00；申购状态：开放申购",
+      "reason": "目标金额 ¥2,700.00，已投入 ¥450.00，还差 ¥2,250.00；申购状态：开放申购",
       "nav": 1.1919,
       "nav_date": "2026-07-23"
     }
@@ -185,9 +185,9 @@
   },
   "holdings_cost": {
     "012773": 2000.0,
-    "160119": 750.0,
-    "016452": 40.0,
-    "460300": 350.0
+    "160119": 800.0,
+    "016452": 50.0,
+    "460300": 450.0
   },
   "data_status": "market_snapshot.json 已加载；标普PE已核验（Multpl，2026-07-23）；纳指参考PE 31.64（QQQ，不交易）"
 }
