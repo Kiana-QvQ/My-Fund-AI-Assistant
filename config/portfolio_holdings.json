@@ -323,10 +323,10 @@
       "purpose": "build"
     },
     {
-      "transaction_id": "9290387b-f527-4331-b57b-1f7211171b5d",
+      "transaction_id": "9ad5fca1-d779-4bf2-9b89-e04bba65ce62",
       "idempotency_key": "b227cef2fb5d1997c0c79c57",
       "trade_date": "2026-08-03",
-      "time": "2026-08-03T14:48:14+08:00",
+      "time": "2026-08-03T14:59:16+08:00",
       "side": "buy",
       "fund_code": "160119",
       "amount": 20.0,
@@ -337,10 +337,10 @@
       "purpose": "build"
     },
     {
-      "transaction_id": "915c2163-5e50-4333-8676-526891874a9c",
+      "transaction_id": "fa582230-d43b-4dfe-9c76-f5ddd1429da0",
       "idempotency_key": "cf12a370014c2c2c5f98f78f",
       "trade_date": "2026-08-03",
-      "time": "2026-08-03T14:48:14+08:00",
+      "time": "2026-08-03T14:59:17+08:00",
       "side": "buy",
       "fund_code": "460300",
       "amount": 10.0,
@@ -351,10 +351,10 @@
       "purpose": "build"
     },
     {
-      "transaction_id": "1146766a-9bf6-4aba-a9d5-c3a0c2ca2ced",
+      "transaction_id": "d0e34205-62be-41dd-a325-74ae5b71b185",
       "idempotency_key": "ddcbf2e2581b31d99cc0c3d6",
       "trade_date": "2026-08-03",
-      "time": "2026-08-03T14:48:14+08:00",
+      "time": "2026-08-03T14:59:17+08:00",
       "side": "buy",
       "fund_code": "016452",
       "amount": 10.0,
