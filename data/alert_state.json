@@ -3,23 +3,23 @@
     "短债": {
       "multiplier": 1.0,
       "monthly": 186.0,
-      "weekly": 186.0,
+      "weekly": 50.63,
       "paused": false,
       "action": "buy"
     },
     "沪深300": {
       "multiplier": 0.5,
       "monthly": 40.5,
-      "weekly": 40.5,
+      "weekly": 10.12,
       "paused": false,
       "action": "half"
     },
     "中证500": {
       "multiplier": 0.5,
-      "monthly": 16.5,
-      "weekly": 16.5,
-      "paused": false,
-      "action": "half"
+      "monthly": 0.0,
+      "weekly": 0.0,
+      "paused": true,
+      "action": "wait"
     },
     "标普500": {
       "multiplier": 0.0,
@@ -71,10 +71,10 @@
     }
   },
   "dca_month": {
-    "year_month": "2026-07",
+    "year_month": "2026-08",
     "spent": 0.0,
-    "emails_sent": 6,
+    "emails_sent": 1,
     "planned_monthly": 243.0
   },
-  "updated_at": "2026-07-31T14:50:09+08:00"
+  "updated_at": "2026-08-03T15:34:41+08:00"
 }
