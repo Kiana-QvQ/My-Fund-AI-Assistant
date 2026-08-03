@@ -1,7 +1,7 @@
 {
   "as_of": "2026-08-03",
-  "generated_at": "2026-08-03T14:59:17+08:00",
-  "updated_at_display": "2026-08-03 14:59:17 CST",
+  "generated_at": "2026-08-03T15:05:42+08:00",
+  "updated_at_display": "2026-08-03 15:05:42 CST",
   "total_cost_basis": 3620.0,
   "building_principal": 10000.0,
   "initial_build_percent": 20.0,
@@ -32,14 +32,14 @@
     {
       "fund_code": "160119",
       "name": "南方中证500ETF联接(LOF)A",
-      "cost_basis": 930.0,
+      "cost_basis": 920.0,
       "target_percent": 11.0,
       "target_amount": 1100.0,
-      "current_percent": 9.3,
-      "deviation_percent": -1.6999999999999993,
-      "shortfall": 170.0,
+      "current_percent": 9.2,
+      "deviation_percent": -1.8000000000000007,
+      "shortfall": 180.0,
       "decision": "目标未完成",
-      "reason": "目标金额 ¥1,100.00，已投入 ¥930.00，还差 ¥170.00；申购状态：开放申购",
+      "reason": "目标金额 ¥1,100.00，已投入 ¥920.00，还差 ¥180.00；申购状态：开放申购",
       "nav": 2.0828,
       "nav_date": "2026-07-30"
     },
@@ -60,14 +60,14 @@
     {
       "fund_code": "460300",
       "name": "华泰柏瑞沪深300ETF联接A",
-      "cost_basis": 610.0,
+      "cost_basis": 620.0,
       "target_percent": 27.0,
       "target_amount": 2700.0,
-      "current_percent": 6.1,
-      "deviation_percent": -20.9,
-      "shortfall": 2090.0,
+      "current_percent": 6.2,
+      "deviation_percent": -20.8,
+      "shortfall": 2080.0,
       "decision": "目标未完成",
-      "reason": "目标金额 ¥2,700.00，已投入 ¥610.00，还差 ¥2,090.00；申购状态：开放申购",
+      "reason": "目标金额 ¥2,700.00，已投入 ¥620.00，还差 ¥2,080.00；申购状态：开放申购",
       "nav": 1.1527,
       "nav_date": "2026-07-30"
     }
@@ -185,9 +185,9 @@
   },
   "holdings_cost": {
     "012773": 2000.0,
-    "160119": 930.0,
+    "160119": 920.0,
     "016452": 80.0,
-    "460300": 610.0
+    "460300": 620.0
   },
   "data_status": "market_snapshot.json 已加载；标普PE已核验（Multpl，2026-07-30）；纳指参考PE 31.17（QQQ，不交易）"
 }

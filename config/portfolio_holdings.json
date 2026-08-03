@@ -17,10 +17,10 @@
       "fund_code": "160119",
       "name": "南方中证500ETF联接(LOF)A",
       "shares": null,
-      "cost_basis": 930.0,
+      "cost_basis": 920.0,
       "target_percent": 11.0,
       "asset_class": "A股宽基",
-      "note": "中证500建仓"
+      "note": "更正：中证500误记多10元冲回"
     },
     {
       "fund_code": "016452",
@@ -35,10 +35,10 @@
       "fund_code": "460300",
       "name": "华泰柏瑞沪深300ETF联接A",
       "shares": null,
-      "cost_basis": 610.0,
+      "cost_basis": 620.0,
       "target_percent": 27.0,
       "asset_class": "A股宽基",
-      "note": "沪深300建仓"
+      "note": "更正：沪深300补记10元（实为20非10）"
     }
   ],
   "transactions": [
@@ -362,6 +362,33 @@
       "shares": null,
       "nav": null,
       "note": "纳斯达克100建仓",
+      "purpose": "build"
+    },
+    {
+      "transaction_id": "10032476-c67e-4de1-b5a9-079ea73ee3f2",
+      "idempotency_key": "4cec0885a9309c0706910e94",
+      "trade_date": "2026-08-03",
+      "time": "2026-08-03T15:05:40+08:00",
+      "side": "sell",
+      "fund_code": "160119",
+      "proceeds": null,
+      "cost_delta": -10.0,
+      "shares": null,
+      "nav": null,
+      "note": "更正：中证500误记多10元冲回"
+    },
+    {
+      "transaction_id": "34154c99-6440-4fc0-899d-91abea341dc4",
+      "idempotency_key": "d216fbd5804f5286d2706816",
+      "trade_date": "2026-08-03",
+      "time": "2026-08-03T15:05:42+08:00",
+      "side": "buy",
+      "fund_code": "460300",
+      "amount": 10.0,
+      "cost_delta": 10.0,
+      "shares": null,
+      "nav": null,
+      "note": "更正：沪深300补记10元（实为20非10）",
       "purpose": "build"
     }
   ]
