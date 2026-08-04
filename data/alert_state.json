@@ -3,16 +3,16 @@
     "短债": {
       "multiplier": 1.0,
       "monthly": 186.0,
-      "weekly": 50.63,
+      "weekly": 50.62,
       "paused": false,
       "action": "buy"
     },
     "沪深300": {
-      "multiplier": 0.5,
-      "monthly": 40.5,
-      "weekly": 10.12,
+      "multiplier": 0.7,
+      "monthly": 56.7,
+      "weekly": 14.18,
       "paused": false,
-      "action": "half"
+      "action": "seventy"
     },
     "中证500": {
       "multiplier": 0.5,
@@ -50,8 +50,8 @@
   "build_machines": {
     "沪深300": {
       "current_state": "宽松观测仓 25%",
-      "candidate_state": null,
-      "candidate_count": 0,
+      "candidate_state": "正式小额底仓 50%",
+      "candidate_count": 1,
       "last_notified_state": "宽松观测仓 25%",
       "last_notified_at": "2026-07-28T14:32:34+08:00"
     },
@@ -73,8 +73,8 @@
   "dca_month": {
     "year_month": "2026-08",
     "spent": 0.0,
-    "emails_sent": 1,
-    "planned_monthly": 243.0
+    "emails_sent": 2,
+    "planned_monthly": 259.2
   },
-  "updated_at": "2026-08-03T15:34:41+08:00"
+  "updated_at": "2026-08-04T14:32:57+08:00"
 }
