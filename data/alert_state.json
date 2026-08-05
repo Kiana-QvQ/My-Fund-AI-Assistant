@@ -38,7 +38,7 @@
   },
   "build": {
     "沪深300": {
-      "state": "宽松观测仓 25%"
+      "state": "正式小额底仓 50%"
     },
     "中证500": {
       "state": "不可买"
@@ -49,11 +49,11 @@
   },
   "build_machines": {
     "沪深300": {
-      "current_state": "宽松观测仓 25%",
-      "candidate_state": "正式小额底仓 50%",
-      "candidate_count": 1,
-      "last_notified_state": "宽松观测仓 25%",
-      "last_notified_at": "2026-07-28T14:32:34+08:00"
+      "current_state": "正式小额底仓 50%",
+      "candidate_state": null,
+      "candidate_count": 0,
+      "last_notified_state": "正式小额底仓 50%",
+      "last_notified_at": "2026-08-05T14:33:21+08:00"
     },
     "中证500": {
       "current_state": "不可买",
@@ -76,5 +76,5 @@
     "emails_sent": 2,
     "planned_monthly": 259.2
   },
-  "updated_at": "2026-08-04T14:32:57+08:00"
+  "updated_at": "2026-08-05T14:33:23+08:00"
 }
