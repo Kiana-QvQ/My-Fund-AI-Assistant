@@ -20,7 +20,10 @@ SCRIPTS = Path(__file__).resolve().parent
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-from investment_plan import build_summary_line, dca_summary_line  # noqa: E402
+from investment_plan import (  # noqa: E402
+    build_summary_line,
+    dca_summary_line,
+)
 from policy_rules import (  # noqa: E402
     decision_label,
     load_policy,
@@ -94,6 +97,8 @@ def summarize_equity(indexes: dict, holdings_cost: dict[str, float], principal: 
             target_amount=principal * weight,
         )
         label = decision_label(action)
+        if name == "纳斯达克100" and action == "reference":
+            label = "仅参考·个人定投另计"
         if action == "overvalued_watch":
             label = "高估观察，当前无持仓无需止盈"
         premium_pct = item.get("qdii_premium_pct")
@@ -439,7 +444,7 @@ def render(status: dict) -> str:
             )
         decision = decision_label(action)
         if action == "reference" or name == "纳斯达克100":
-            decision = "仅参考·不自动买"
+            decision = "仅参考·个人定投另计"
         elif action == "overvalued_watch":
             decision = "高估观察，当前无持仓无需止盈"
         elif action == "unknown":

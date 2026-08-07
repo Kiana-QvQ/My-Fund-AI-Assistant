@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-08-03",
+  "as_of": "2026-08-07",
   "base_currency": "CNY",
   "building_principal": 10000.0,
   "initial_build_percent": 20.0,
@@ -26,10 +26,10 @@
       "fund_code": "016452",
       "name": "南方纳斯达克100指数发起(QDII)A",
       "shares": null,
-      "cost_basis": 80.0,
+      "cost_basis": 90.0,
       "target_percent": 3.0,
       "asset_class": "美股QDII",
-      "note": "纳斯达克100建仓"
+      "note": "纳斯达克100交易日定投"
     },
     {
       "fund_code": "460300",
@@ -390,6 +390,20 @@
       "nav": null,
       "note": "更正：沪深300补记10元（实为20非10）",
       "purpose": "build"
+    },
+    {
+      "transaction_id": "cc3708cb-3592-4ede-b147-166a116a39e1",
+      "idempotency_key": "18918e3b5ca92c76257301b4",
+      "trade_date": "2026-08-07",
+      "time": "2026-08-07T11:13:58+08:00",
+      "side": "buy",
+      "fund_code": "016452",
+      "amount": 10.0,
+      "cost_delta": 10.0,
+      "shares": null,
+      "nav": null,
+      "note": "纳斯达克100交易日定投",
+      "purpose": "dca"
     }
   ]
 }

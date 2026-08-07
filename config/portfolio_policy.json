@@ -85,7 +85,19 @@
       "max_dca_emails_per_month": 6,
       "note": "每周四固定1封周报；事件信仅档位实质变化时发。max_dca_emails_per_month 含周报+定投事件（不含建仓）。设为4≈只保留周报；设为0关闭定投邮件。"
     },
-    "note": "组合月定投总额基础300、封顶1000，按目标仓位分给5支。权益本周金额<min_equity_weekly_amount并入短债。可买须申购开放/限大额且金额≤日限额、≥购买起点。A股/美股同一套10年PE档。周四约12:00周报（避开早高峰 cron）。"
+    "personal_schedules": {
+      "016452": {
+        "name": "纳斯达克100",
+        "fund_code": "016452",
+        "schedule": "trading_day",
+        "trading_days_only": true,
+        "daily_amount": 10,
+        "monthly_stop_amount": 215,
+        "enabled": true,
+        "note": "仅交易日执行；当月累计达到215元后停止"
+      }
+    },
+    "note": "组合月定投总额基础300、封顶1000，按目标仓位分给5支；纳斯达克100另按个人交易日定投10元、当月终止金额215元执行，不计入组合周度预算。权益本周金额<min_equity_weekly_amount并入短债。可买须申购开放/限大额且金额≤日限额、≥购买起点。A股/美股同一套10年PE档。周四约12:00周报（避开早高峰 cron）。"
   },
   "rules": {
     "rebalance_period": "annual",

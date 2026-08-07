@@ -44,6 +44,7 @@ from investment_plan import (  # noqa: E402
     allocate_dca_plan,
     apply_dca_purchase_gates,
     fingerprint_dca,
+    personal_dca_fund_codes,
     resolve_build_line,
     resolve_dca_line,
 )
@@ -107,7 +108,12 @@ def building_principal() -> float:
     return float(doc.get("building_principal") or 10000.0)
 
 
-def actual_dca_spent(month_key: str, policy: dict | None = None) -> float:
+def actual_dca_spent(
+    month_key: str,
+    policy: dict | None = None,
+    *,
+    fund_codes: set[str] | None = None,
+) -> float:
     """Sum recorded **DCA** buys this month (ledger truth, not emails).
 
     Only counts purpose=dca, or note containing 定投/dca.
@@ -131,6 +137,8 @@ def actual_dca_spent(month_key: str, policy: dict | None = None) -> float:
         if str(tx.get("trade_date") or "")[:7] != month_key:
             continue
         fund = str(tx.get("fund_code") or "")
+        if fund_codes is not None and fund not in fund_codes:
+            continue
         if sleeve_codes and fund not in sleeve_codes:
             continue
         purpose = str(tx.get("purpose") or "").strip().lower()
@@ -585,7 +593,16 @@ def main() -> None:
     state = load_alert_state()
     month_key = today.strftime("%Y-%m")
     dca_month = state.get("dca_month") or {}
-    month_spent = actual_dca_spent(month_key, policy)
+    portfolio_codes = {
+        str(s.get("fund_code"))
+        for s in (policy.get("dca") or {}).get("sleeves") or []
+        if s.get("fund_code")
+    } - personal_dca_fund_codes(policy)
+    month_spent = actual_dca_spent(
+        month_key,
+        policy,
+        fund_codes=portfolio_codes,
+    )
 
     dca_lines = collect_dca(
         snapshot, policy, today=today, month_spent=month_spent

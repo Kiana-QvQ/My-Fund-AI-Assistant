@@ -1,10 +1,11 @@
-"""DCA (weekly) and build (event) plan helpers — independent of each other.
+"""DCA (weekly), personal schedules, and build (event) plan helpers.
 
 Portfolio budget model:
 - monthly_base / monthly_cap apply to the **whole plan** (default 300 / 1000)
 - Split across 5 sleeves by target_allocation weights
 - Paused / excluded equity weight flows to 短债
 - Weekly size = remaining month budget ÷ remaining Thursdays (enforces month cap)
+- Personal schedules are tracked separately from the portfolio budget
 """
 
 from __future__ import annotations
@@ -31,6 +32,128 @@ from policy_rules import (
 def dca_config(policy: dict | None = None) -> dict:
     policy = policy or load_policy()
     return policy.get("dca") or {}
+
+
+def personal_dca_schedules(policy: dict | None = None) -> dict[str, dict]:
+    """Return user-defined schedules that do not use the portfolio budget."""
+    schedules = dca_config(policy).get("personal_schedules") or {}
+    return {
+        str(code): dict(schedule)
+        for code, schedule in schedules.items()
+        if isinstance(schedule, dict)
+    }
+
+
+def personal_dca_schedule(
+    fund_code: str,
+    policy: dict | None = None,
+) -> dict | None:
+    return personal_dca_schedules(policy).get(str(fund_code))
+
+
+def personal_dca_fund_codes(policy: dict | None = None) -> set[str]:
+    return set(personal_dca_schedules(policy))
+
+
+def personal_dca_line(
+    fund_code: str,
+    *,
+    month_spent: float = 0.0,
+    is_trading_day: bool = True,
+    policy: dict | None = None,
+) -> dict:
+    """Calculate one personal trading-day DCA installment.
+
+    This is intentionally separate from the valuation-based weekly portfolio
+    plan: the user's broker schedule is recorded, while the system's risk
+    signals remain advisory and fail-closed.
+    """
+    schedule = personal_dca_schedule(fund_code, policy)
+    code = str(fund_code)
+    if schedule is None:
+        return {
+            "fund_code": code,
+            "enabled": False,
+            "daily_amount": 0.0,
+            "monthly_stop_amount": 0.0,
+            "month_spent": round(max(0.0, float(month_spent or 0.0)), 2),
+            "month_remaining": 0.0,
+            "today_amount": 0.0,
+            "executable": False,
+            "reason": "未配置个人定投计划",
+        }
+
+    daily = max(0.0, float(schedule.get("daily_amount") or 0.0))
+    stop_amount = max(
+        0.0,
+        float(
+            schedule.get(
+                "monthly_stop_amount",
+                schedule.get("monthly_cap", 0.0),
+            )
+            or 0.0
+        ),
+    )
+    spent = max(0.0, float(month_spent or 0.0))
+    remaining = round(max(0.0, stop_amount - spent), 2)
+    enabled = bool(schedule.get("enabled", True))
+    trading_days_only = bool(schedule.get("trading_days_only", True))
+    can_run = enabled and (is_trading_day or not trading_days_only) and remaining > 0
+    today_amount = round(min(daily, remaining), 2) if can_run else 0.0
+
+    if not enabled:
+        reason = "个人定投已关闭"
+    elif trading_days_only and not is_trading_day:
+        reason = "今天非交易日，跳过本次定投"
+    elif remaining <= 0:
+        reason = f"本月已达到终止金额 {stop_amount:.0f} 元"
+    else:
+        reason = (
+            f"交易日定投 {daily:.0f} 元；本月累计达到 {stop_amount:.0f} 元后停止"
+        )
+
+    return {
+        "name": schedule.get("name") or code,
+        "fund_code": code,
+        "schedule": schedule.get("schedule") or "trading_day",
+        "trading_days_only": trading_days_only,
+        "enabled": enabled,
+        "daily_amount": daily,
+        "monthly_stop_amount": stop_amount,
+        "month_spent": round(spent, 2),
+        "month_remaining": remaining,
+        "today_amount": today_amount,
+        "executable": today_amount > 0,
+        "reason": reason,
+    }
+
+
+def personal_dca_summary_line(policy: dict | None = None) -> str:
+    schedules = personal_dca_schedules(policy)
+    if not schedules:
+        return "个人定投：未配置独立计划"
+    parts = []
+    for schedule in schedules.values():
+        if not schedule.get("enabled", True):
+            continue
+        cadence = (
+            "交易日"
+            if schedule.get("trading_days_only", True)
+            else "每日"
+        )
+        daily = float(schedule.get("daily_amount") or 0)
+        stop_amount = float(
+            schedule.get(
+                "monthly_stop_amount",
+                schedule.get("monthly_cap", 0),
+            )
+            or 0
+        )
+        parts.append(
+            f"{schedule.get('name') or schedule.get('fund_code')} {cadence}{daily:.0f}元、"
+            f"月终止{stop_amount:.0f}元"
+        )
+    return "个人定投：" + "；".join(parts) + "（不计入组合周度预算）"
 
 
 def portfolio_monthly_base(policy: dict | None = None) -> float:
@@ -605,7 +728,8 @@ def dca_summary_line(policy: dict | None = None) -> str:
     cap = portfolio_monthly_cap(policy)
     return (
         f"定投：组合月基础{base:.0f}元、封顶{cap:.0f}元（低估最高倍率可上浮至封顶）；"
-        f"A/美股≥90%停、80%～90%→50%；周四周报；与建仓邮件分离"
+        f"A/美股≥90%停、80%～90%→50%；周四周报；与建仓邮件分离；"
+        f"{personal_dca_summary_line(policy)}"
     )
 
 

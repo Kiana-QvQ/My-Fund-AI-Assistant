@@ -19,6 +19,7 @@ import send_trade_alert_email as email_mod  # noqa: E402
 from investment_plan import (  # noqa: E402
     allocate_dca_plan,
     dca_amounts,
+    personal_dca_line,
     resolve_dca_line,
 )
 from policy_rules import load_policy  # noqa: E402
@@ -101,6 +102,70 @@ class DcaSpentLedgerTests(unittest.TestCase):
             with patch.object(email_mod, "HOLDINGS_PATH", path):
                 spent = email_mod.actual_dca_spent(month)
         self.assertEqual(spent, 78.0)  # 40.5 + 37.5；建仓/非定投不计
+
+    def test_personal_dca_can_be_excluded_from_portfolio_spent(self) -> None:
+        month = "2026-08"
+        doc = {
+            "transactions": [
+                {
+                    "side": "buy",
+                    "fund_code": "016452",
+                    "trade_date": "2026-08-07",
+                    "amount": 10.0,
+                    "purpose": "dca",
+                },
+                {
+                    "side": "buy",
+                    "fund_code": "460300",
+                    "trade_date": "2026-08-07",
+                    "amount": 20.0,
+                    "purpose": "dca",
+                },
+            ]
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "holdings.json"
+            path.write_text(json.dumps(doc), encoding="utf-8")
+            with patch.object(email_mod, "HOLDINGS_PATH", path):
+                spent = email_mod.actual_dca_spent(
+                    month,
+                    load_policy(),
+                    fund_codes={"460300"},
+                )
+        self.assertEqual(spent, 20.0)
+
+
+class PersonalDcaScheduleTests(unittest.TestCase):
+    def test_nasdaq_trading_day_schedule_stops_at_monthly_amount(self) -> None:
+        policy = load_policy()
+        line = personal_dca_line(
+            "016452",
+            month_spent=205.0,
+            is_trading_day=True,
+            policy=policy,
+        )
+        self.assertEqual(line["today_amount"], 10.0)
+        self.assertEqual(line["month_remaining"], 10.0)
+        self.assertTrue(line["executable"])
+
+        stopped = personal_dca_line(
+            "016452",
+            month_spent=215.0,
+            is_trading_day=True,
+            policy=policy,
+        )
+        self.assertEqual(stopped["today_amount"], 0.0)
+        self.assertIn("终止金额", stopped["reason"])
+
+    def test_nasdaq_schedule_skips_non_trading_day(self) -> None:
+        line = personal_dca_line(
+            "016452",
+            month_spent=0.0,
+            is_trading_day=False,
+            policy=load_policy(),
+        )
+        self.assertEqual(line["today_amount"], 0.0)
+        self.assertIn("非交易日", line["reason"])
 
 
 if __name__ == "__main__":

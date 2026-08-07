@@ -1,18 +1,18 @@
 {
-  "as_of": "2026-08-06",
-  "generated_at": "2026-08-06T14:36:47+08:00",
-  "updated_at_display": "2026-08-06 14:36:47 CST",
-  "total_cost_basis": 3620.0,
+  "as_of": "2026-08-07",
+  "generated_at": "2026-08-07T11:23:33+08:00",
+  "updated_at_display": "2026-08-07 11:23:33 CST",
+  "total_cost_basis": 3630.0,
   "building_principal": 10000.0,
   "initial_build_percent": 20.0,
   "first_month_budget": 2000.0,
-  "building_progress_percent": 36.199999999999996,
+  "building_progress_percent": 36.3,
   "overall_decision": "🟢 权益半额定投；短债本期不催补（012773 长期还差 ¥3,100.00）",
   "equity_notes": [
     "沪深300：定投50%，1年分位72.0%，52周回撤7.9%",
     "中证500：定投50%，1年分位73.7%，52周回撤13.5%",
     "标普500：溢价过高暂缓，溢价8.69%，1年分位100.0%，52周回撤0.2%",
-    "纳斯达克100：仅参考·不自动买，溢价11.65%，1年分位无统计"
+    "纳斯达克100：仅参考·个人定投另计，溢价11.65%，1年分位无统计"
   ],
   "rows": [
     {
@@ -46,14 +46,14 @@
     {
       "fund_code": "016452",
       "name": "南方纳斯达克100指数发起(QDII)A",
-      "cost_basis": 80.0,
+      "cost_basis": 90.0,
       "target_percent": 3.0,
       "target_amount": 300.0,
-      "current_percent": 0.8,
-      "deviation_percent": -2.2,
-      "shortfall": 220.0,
+      "current_percent": 0.8999999999999999,
+      "deviation_percent": -2.1,
+      "shortfall": 210.0,
       "decision": "目标未完成",
-      "reason": "目标金额 ¥300.00，已投入 ¥80.00，还差 ¥220.00；申购状态：限大额",
+      "reason": "目标金额 ¥300.00，已投入 ¥90.00，还差 ¥210.00；申购状态：限大额",
       "nav": 2.3115,
       "nav_date": "2026-08-04"
     },
@@ -186,7 +186,7 @@
   "holdings_cost": {
     "012773": 2000.0,
     "160119": 920.0,
-    "016452": 80.0,
+    "016452": 90.0,
     "460300": 620.0
   },
   "data_status": "market_snapshot.json 已加载；标普PE已核验（Multpl，2026-08-05）；纳指参考PE 33.04（QQQ，不交易）"
