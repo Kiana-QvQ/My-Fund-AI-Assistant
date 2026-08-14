@@ -72,6 +72,16 @@ class AvgCostHelpersTests(unittest.TestCase):
         self.assertEqual(scale, 1.0)
         self.assertIsNone(reason)
 
+    def test_format_avg_cost_bit(self) -> None:
+        from cost_basis_metrics import format_avg_cost_bit
+
+        text = format_avg_cost_bit(
+            {"avg_cost": 2.0, "nav": 2.2, "vs_avg_pct": 10.0, "avg_cost_scale": 0.75}
+        )
+        self.assertIn("均价 2.0000", text)
+        self.assertIn("相对均价 +10.00%", text)
+        self.assertIn("软降×0.75", text)
+
 
 if __name__ == "__main__":
     unittest.main()

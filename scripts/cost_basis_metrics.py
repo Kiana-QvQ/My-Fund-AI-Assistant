@@ -107,6 +107,25 @@ def apply_soft_buy_scale(
     return amt, reason, scale
 
 
+def format_avg_cost_bit(metrics_or_line: dict | None) -> str:
+    """Compact email/readme snippet: 均价/净值/相对均价."""
+    row = metrics_or_line or {}
+    avg = row.get("avg_cost")
+    nav = row.get("nav")
+    vs = row.get("vs_avg_pct")
+    scale = row.get("avg_cost_scale")
+    bits: list[str] = []
+    if isinstance(avg, (int, float)):
+        bits.append(f"均价 {float(avg):.4f}")
+    if isinstance(nav, (int, float)):
+        bits.append(f"净值 {float(nav):.4f}")
+    if isinstance(vs, (int, float)):
+        bits.append(f"相对均价 {float(vs):+.2f}%")
+    if isinstance(scale, (int, float)) and float(scale) < 0.999:
+        bits.append(f"软降×{float(scale):.2f}")
+    return "｜".join(bits)
+
+
 def holdings_by_code(holdings_doc: dict | None) -> dict[str, dict]:
     out: dict[str, dict] = {}
     for row in (holdings_doc or {}).get("holdings") or []:

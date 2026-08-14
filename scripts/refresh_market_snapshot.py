@@ -89,10 +89,14 @@ def clean_number(value):
         return None
 
 
-def load_holdings_cost() -> dict[str, float]:
+def load_holdings_doc() -> dict:
     if not HOLDINGS_PATH.is_file():
-        return {}
-    doc = json.loads(HOLDINGS_PATH.read_text(encoding="utf-8"))
+        return {"holdings": []}
+    return json.loads(HOLDINGS_PATH.read_text(encoding="utf-8"))
+
+
+def load_holdings_cost() -> dict[str, float]:
+    doc = load_holdings_doc()
     return {
         item["fund_code"]: float(item.get("cost_basis") or 0)
         for item in doc.get("holdings", [])
@@ -304,7 +308,16 @@ def build_plan(
     indexes: dict,
     holdings_cost: dict[str, float],
     policy: dict,
+    *,
+    holdings_doc: dict | None = None,
 ) -> dict:
+    from cost_basis_metrics import (  # noqa: WPS433
+        apply_soft_buy_scale,
+        holding_cost_metrics,
+        holdings_by_code,
+    )
+    from fund_nav import EQUITY_COST_FUNDS  # noqa: WPS433
+
     first_month = principal * 0.20
     allocations = []
     held_back = 0.0
@@ -313,6 +326,7 @@ def build_plan(
     bootstrap_notes: list[str] = []
     short_bond = next(item for item in funds if item["asset"] == "short_bond")
     r = policy.get("rules") or {}
+    held_rows = holdings_by_code(holdings_doc)
 
     for item in funds:
         fund = item["fund"]
@@ -365,6 +379,26 @@ def build_plan(
             reason = f"{reason}；未用额度转入短债/备用金"
         elif action == "buy":
             planned = base
+
+        # Avg-cost soft gate for equity sleeves (align with email path).
+        code = str(item["fund_code"])
+        avg_cost = None
+        vs_avg = None
+        if code in EQUITY_COST_FUNDS and planned > 0:
+            metrics = holding_cost_metrics(held_rows.get(code), fund.get("nav"))
+            avg_cost = metrics.get("avg_cost")
+            vs_avg = metrics.get("vs_avg_pct")
+            scaled, soft_reason, scale = apply_soft_buy_scale(
+                planned,
+                fund_code=code,
+                vs_avg_percent=vs_avg,
+                policy=policy,
+            )
+            if soft_reason and scaled != planned:
+                held_back += max(planned - scaled, 0.0)
+                planned = scaled
+                reason = f"{reason}；{soft_reason}".lstrip("；")
+
         allocations.append(
             {
                 "fund_code": item["fund_code"],
@@ -373,6 +407,8 @@ def build_plan(
                 "action": action,
                 "planned_amount": round(planned, 2),
                 "reason": reason,
+                "avg_cost": avg_cost,
+                "vs_avg_pct": vs_avg,
             }
         )
 
@@ -384,7 +420,7 @@ def build_plan(
         short_plan["planned_amount"] = round(max(adjusted, 0.0), 2)
         notes = []
         if held_back:
-            notes.append("权益暂停/半额结余/止盈观察/微建仓结余资金转入短债底仓")
+            notes.append("权益暂停/半额结余/止盈观察/微建仓结余/均价软降资金转入短债底仓")
         if double_extra:
             notes.append(f"已为低估加倍调出 {double_extra:.2f} 元")
         if notes:
@@ -413,12 +449,12 @@ def main() -> None:
     policy = load_policy()
     funds = fund_snapshot()
     indexes, premiums, us_meta = index_snapshot()
-    holdings_cost = load_holdings_cost()
-    if HOLDINGS_PATH.is_file():
-        holdings_doc = json.loads(HOLDINGS_PATH.read_text(encoding="utf-8"))
-        principal = float(holdings_doc.get("building_principal") or args.principal)
-    else:
-        principal = args.principal
+    holdings_doc = load_holdings_doc()
+    holdings_cost = {
+        item["fund_code"]: float(item.get("cost_basis") or 0)
+        for item in holdings_doc.get("holdings", [])
+    }
+    principal = float(holdings_doc.get("building_principal") or args.principal)
     items = []
     for item in FUNDS:
         current = dict(item)
@@ -432,7 +468,12 @@ def main() -> None:
         "qdii_premiums": premiums,
         "us_meta": us_meta,
         "build_plan": build_plan(
-            principal, items, indexes, holdings_cost, policy
+            principal,
+            items,
+            indexes,
+            holdings_cost,
+            policy,
+            holdings_doc=holdings_doc,
         ),
     }
     output_path = Path(args.output)

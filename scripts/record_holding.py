@@ -327,6 +327,10 @@ def apply_buy(
             row["shares"] = round(float(prev_shares) + float(buy_shares), 4)
     if note:
         row["note"] = note
+    if isinstance(row.get("shares"), (int, float)) and float(row["shares"]) > 0:
+        cost_now = float(row.get("cost_basis") or 0)
+        if cost_now > 0:
+            row["avg_cost"] = round(cost_now / float(row["shares"]), 6)
 
     _append_tx(
         doc,

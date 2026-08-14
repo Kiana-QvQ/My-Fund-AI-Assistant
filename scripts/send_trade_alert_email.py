@@ -421,6 +421,8 @@ def build_dca_email(
     policy: dict,
     changes: list[str] | None = None,
 ) -> tuple[str, str]:
+    from cost_basis_metrics import format_avg_cost_bit  # noqa: WPS433
+
     now = datetime.now(CST).strftime("%Y-%m-%d %H:%M CST")
     ops = [ln for ln in lines if float(ln.get("weekly") or 0) > 0]
     paused = [ln for ln in lines if ln.get("paused")]
@@ -436,11 +438,16 @@ def build_dca_email(
     month_spent = float((lines[0].get("month_spent") if lines else 0) or 0)
     month_remaining = float((lines[0].get("month_remaining") if lines else 0) or 0)
 
+    def _avg_suffix(ln: dict) -> str:
+        bit = format_avg_cost_bit(ln)
+        return f"｜{bit}" if bit else ""
+
     op_block = (
         "\n".join(
             f"  · {ln['name']} {ln['fund_code']}｜本周 {ln['weekly']:.2f} 元"
             f"（月 {ln['monthly']:.0f}｜{ln['multiplier'] * 100:.0f}%）"
             f"｜{ln.get('purchase_status') or '申购状态未知'}"
+            f"{_avg_suffix(ln)}"
             for ln in ops
         )
         or "  · 本周无可申购项"
@@ -448,6 +455,7 @@ def build_dca_email(
     checklist = (
         "\n".join(
             f"  · {ln['fund_code']}｜{ln['name']}｜{ln['weekly']:.2f} 元｜建议申购"
+            f"{_avg_suffix(ln)}"
             for ln in ops
         )
         or "  · 无"
@@ -460,9 +468,23 @@ def build_dca_email(
                 if ln.get("purchase_status")
                 else ""
             )
+            + _avg_suffix(ln)
             for ln in paused
         )
         or "  · 无"
+    )
+    avg_watch = [
+        ln
+        for ln in lines
+        if ln.get("role") == "equity"
+        and isinstance(ln.get("vs_avg_pct"), (int, float))
+    ]
+    avg_block = (
+        "\n".join(
+            f"  · {ln['name']} {ln['fund_code']}｜{format_avg_cost_bit(ln)}"
+            for ln in avg_watch
+        )
+        or "  · 权益份额/均价待补齐"
     )
     change_section = ""
     if changes:
@@ -481,13 +503,16 @@ def build_dca_email(
 【本周申购】合计约 {total_week:.2f} 元
 {op_block}
 
+【权益相对均价】（≥8% 组合定投建议软降；个人纳指日定投不受影响）
+{avg_block}
+
 【暂停】
 {pause_block}
 
 【预算】本月计划 {total_month:.0f}｜已记定投 {month_spent:.0f}｜剩余 {month_remaining:.0f}｜剩周四 {thursdays_left}
 规则：月基础 300 / 封顶 1000；≥90% 停；80%～90%→50%；权益周额＜10 元并入短债。
 QDII：溢价＞2% 停；≤1% 才恢复；中间观望。须开放申购/限大额且不超过日限额。
-记账：purpose=dca → `record_holding.py buy --purpose dca`（建仓用 purpose=build）
+记账：purpose=dca → `record_holding.py buy --purpose dca --shares … --nav …`（建仓用 purpose=build）
 仅研究提醒，不自动下单。
 
 — My Fund AI Assistant
@@ -502,6 +527,8 @@ def build_build_email(
     policy: dict,
     changes: list[str],
 ) -> tuple[str, str]:
+    from cost_basis_metrics import format_avg_cost_bit  # noqa: WPS433
+
     now = datetime.now(CST).strftime("%Y-%m-%d %H:%M CST")
     changed_names: set[str] = set()
     for c in changes:
@@ -538,12 +565,20 @@ def build_build_email(
         status = ln.get("purchase_status")
         if status:
             bits.append(str(status))
+        avg_bit = format_avg_cost_bit(ln)
+        if avg_bit:
+            bits.append(avg_bit)
         return "｜".join(bits) if bits else "—"
 
     checklist = (
         "\n".join(
             f"  · {ln.get('fund_code')}｜{ln['name']}｜"
             f"{float(ln.get('amount') or 0):.0f} 元｜建议申购"
+            + (
+                f"｜{format_avg_cost_bit(ln)}"
+                if format_avg_cost_bit(ln)
+                else ""
+            )
             for ln in active
         )
         or "  · 无可申购建仓项"
@@ -583,7 +618,8 @@ def build_build_email(
 
 规则：状态变化才发信；升级需连续 2 个交易日确认；溢价/失效/止盈/数据失败立即发。
 可买还须：开放申购/限大额、金额≤日限额、≥购买起点；QDII 溢价＞2% 停、≤1% 才恢复。
-记账：purpose=build → `record_holding.py buy --purpose build`（定投用 purpose=dca）
+现价相对持仓均价 ≥8% 时建仓建议金额软降（15% 降至约 50%）。
+记账：purpose=build → `record_holding.py buy --purpose build --shares … --nav …`（定投用 purpose=dca）
 未买满不重复催促。仅研究提醒，不自动下单。
 
 — My Fund AI Assistant

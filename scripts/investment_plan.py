@@ -545,8 +545,12 @@ def apply_avg_cost_soft_gates(
     *,
     policy: dict | None = None,
     holdings_doc: dict | None = None,
-) -> list[dict]:
-    """Soft-scale equity weekly amounts when NAV is rich vs holding avg cost."""
+    min_equity_weekly: float | None = None,
+) -> tuple[list[dict], float]:
+    """Soft-scale equity weekly amounts; return (lines, residual_to_short_bond).
+
+    Soft-cut and post-scale tiny sleeves are folded into residual (短债).
+    """
     from cost_basis_metrics import (  # noqa: WPS433
         apply_soft_buy_scale,
         holding_cost_metrics,
@@ -556,19 +560,34 @@ def apply_avg_cost_soft_gates(
     from record_holding import load_holdings  # noqa: WPS433
 
     policy = policy or load_policy()
+    cfg = dca_config(policy)
+    min_equity = float(
+        min_equity_weekly
+        if min_equity_weekly is not None
+        else cfg.get("min_equity_weekly_amount", 10)
+    )
     held = holdings_by_code(holdings_doc or load_holdings())
     out: list[dict] = []
+    residual_extra = 0.0
     for line in lines:
         row = dict(line)
         code = str(row.get("fund_code") or "")
         weekly = float(row.get("weekly") or 0)
-        if row.get("role") != "equity" or weekly <= 0:
+        if row.get("role") != "equity":
             out.append(row)
             continue
+
         fund = fund_record(snapshot, code)
         metrics = holding_cost_metrics(held.get(code), fund.get("nav"))
         row["avg_cost"] = metrics.get("avg_cost")
         row["vs_avg_pct"] = metrics.get("vs_avg_pct")
+        row["holding_shares"] = metrics.get("shares")
+        row["nav"] = metrics.get("nav")
+
+        if weekly <= 0:
+            out.append(row)
+            continue
+
         new_amt, reason, scale = apply_soft_buy_scale(
             weekly,
             fund_code=code,
@@ -578,14 +597,35 @@ def apply_avg_cost_soft_gates(
         )
         row["avg_cost_scale"] = scale
         if reason and new_amt != weekly:
+            cut = round(weekly - new_amt, 2)
+            if cut > 0:
+                residual_extra = round(residual_extra + cut, 2)
             row["weekly"] = new_amt
-            if new_amt <= 0:
-                row["executable"] = False
-                row["paused"] = True
-                row["action"] = "avg_cost_soft"
             row["reason"] = f"{row.get('reason') or ''}；{reason}".lstrip("；")
+            weekly = new_amt
+
+        if 0 < weekly < min_equity:
+            residual_extra = round(residual_extra + weekly, 2)
+            row["weekly"] = 0.0
+            row["monthly"] = 0.0
+            row["paused"] = True
+            row["action"] = "avg_cost_soft" if reason else "wait"
+            row["reason"] = (
+                f"{row.get('reason') or ''}；软降后本周 {weekly:.2f} 元 < "
+                f"{min_equity:.0f} 元，并入短债".lstrip("；")
+            )
+            row["executable"] = False
+            out.append(row)
+            continue
+
+        if weekly <= 0:
+            row["weekly"] = 0.0
+            row["monthly"] = 0.0
+            row["paused"] = True
+            row["executable"] = False
+            row["action"] = "avg_cost_soft"
         out.append(row)
-    return out
+    return out, residual_extra
 
 
 def apply_dca_purchase_gates(
@@ -598,6 +638,7 @@ def apply_dca_purchase_gates(
 
     Gates: purchase_status / daily_limit / minimum_purchase.
     Equity weekly below min_equity_weekly_amount → merge into residual.
+    Avg-cost soft gate runs after purchase gates; soft-cut also folds to 短债.
     """
     from fund_purchase_gate import (  # noqa: WPS433
         apply_gate_to_amount,
@@ -658,7 +699,10 @@ def apply_dca_purchase_gates(
         row["weekly"] = new_amt
         out.append(row)
 
-    out = apply_avg_cost_soft_gates(out, snapshot, policy=policy)
+    out, soft_residual = apply_avg_cost_soft_gates(
+        out, snapshot, policy=policy, min_equity_weekly=min_equity
+    )
+    residual_extra = round(residual_extra + soft_residual, 2)
 
     if residual_extra > 0:
         for row in out:
