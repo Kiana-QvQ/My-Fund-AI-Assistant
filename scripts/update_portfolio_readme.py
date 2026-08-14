@@ -349,6 +349,19 @@ def build_status() -> dict:
     return status
 
 
+def short_fund_label(name: str, fund_code: str) -> str:
+    """Compact fund label for narrow README tables (phone-friendly)."""
+    aliases = {
+        "012773": "短债",
+        "160119": "中证500",
+        "016452": "纳指100",
+        "460300": "沪深300",
+        "050025": "标普500",
+    }
+    label = aliases.get(str(fund_code)) or str(name or fund_code)
+    return f"{label} `{fund_code}`"
+
+
 def render(status: dict) -> str:
     update_time = status.get("updated_at_display") or status.get("as_of", "")
     lines = [
@@ -359,53 +372,74 @@ def render(status: dict) -> str:
         f"整体建仓进度：**{status['building_progress_percent']:.2f}%**",
         f"> {status['overall_decision']}",
         "> 状态灯：🟢 可买/微建仓/可建仓 · 🟠 止盈观察 · 🟡 观望/暂停/溢价暂缓 · ⚪ 等待数据",
-        "> 说明：当前投入占比 = 单项已投入金额 ÷ 1万元建仓本金；目标金额 = 建仓本金 × 目标仓位。"
-        " 权益相对均价 =（最新净值 − 持仓均价）/ 持仓均价；≥8% 时组合定投/建仓建议软降级。",
+        "> 投入占比 = 已投入 ÷ 1万元本金；相对均价 =（净值 − 均价）/ 均价；"
+        "权益相对均价 ≥8% 时组合定投/建仓建议软降级。",
         "",
-        "| 基金 | 代码 | 已投入 | 份额 | 持仓均价 | 最新净值 | 相对均价 | 目标仓位 | 还差目标 | 今日状态 |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---|",
+        "#### 建仓进度",
+        "",
+        "| 基金 | 已投入 | 目标 | 还差 | 状态 |",
+        "|---|---:|---:|---:|---|",
     ]
     for row in status["rows"]:
-        shares = row.get("shares")
-        avg = row.get("avg_cost")
-        nav = row.get("nav")
-        vs = row.get("vs_avg_pct")
-        shares_text = f"{shares:.4f}" if isinstance(shares, (int, float)) else "-"
-        avg_text = f"{avg:.4f}" if isinstance(avg, (int, float)) else "-"
-        nav_text = f"{float(nav):.4f}" if isinstance(nav, (int, float)) else "-"
-        if isinstance(vs, (int, float)):
-            vs_text = f"**{vs:+.2f}%**"
-        else:
-            vs_text = "-"
         lines.append(
-            f"| {row['name']} | `{row['fund_code']}` | "
-            f"{money(row['cost_basis'])} | {shares_text} | {avg_text} | {nav_text} | "
-            f"{vs_text} | {row['target_percent']:.2f}% | "
-            f"{money(row['shortfall'])} | {row['decision']} |"
+            f"| {short_fund_label(row['name'], row['fund_code'])} | "
+            f"{money(row['cost_basis'])} | {row['target_percent']:.0f}% / "
+            f"{money(row['target_amount'])} | {money(row['shortfall'])} | "
+            f"{row['decision']} |"
         )
+
+    equity_rows = [
+        row
+        for row in status["rows"]
+        if row.get("fund_code") in EQUITY_COST_FUNDS
+        and (
+            isinstance(row.get("avg_cost"), (int, float))
+            or isinstance(row.get("nav"), (int, float))
+        )
+    ]
+    if equity_rows:
+        lines.extend(
+            [
+                "",
+                "#### 权益均价（相对自己的成本）",
+                "",
+                "| 基金 | 份额 | 均价 | 净值 | 相对均价 |",
+                "|---|---:|---:|---:|---:|",
+            ]
+        )
+        for row in equity_rows:
+            shares = row.get("shares")
+            avg = row.get("avg_cost")
+            nav = row.get("nav")
+            vs = row.get("vs_avg_pct")
+            shares_text = f"{shares:.2f}" if isinstance(shares, (int, float)) else "-"
+            avg_text = f"{avg:.4f}" if isinstance(avg, (int, float)) else "-"
+            nav_text = f"{float(nav):.4f}" if isinstance(nav, (int, float)) else "-"
+            vs_text = f"**{vs:+.2f}%**" if isinstance(vs, (int, float)) else "-"
+            lines.append(
+                f"| {short_fund_label(row['name'], row['fund_code'])} | "
+                f"{shares_text} | {avg_text} | {nav_text} | {vs_text} |"
+            )
+
     equity_notes = status.get("equity_notes") or []
     if equity_notes:
         lines.extend(["", "### 权益信号速览", ""])
         for note in equity_notes:
             lines.append(f"- {note}")
-    lines.extend(
-        [
-            "",
-            "### 今日判断依据",
-            "",
-        ]
-    )
+    lines.extend(["", "### 今日判断依据", ""])
     for row in status["rows"]:
-        lines.append(f"- `{row['fund_code']}`：{row['reason']}。")
+        lines.append(
+            f"- {short_fund_label(row['name'], row['fund_code'])}：{row['reason']}。"
+        )
     lines.extend(
         [
             "",
             "## 今日权益估值（4支）",
             "",
-            "> PE 数据用于判断指数贵不贵；场外基金按当日净值成交，数据日期以指数实际更新日为准。",
+            "> PE 看贵不贵；场外按确认净值成交。",
             "",
-            "| 标的 | 场内代码 | 场外基金 | PE-TTM | 10年分位 | 1年分位 | 52周回撤 | QDII溢价 | 数据日期 | 今日判断 |",
-            "|---|---:|---:|---:|---:|---:|---:|---:|---|---|",
+            "| 标的 | 场外 | PE | 10年 | 1年 | 回撤 | 溢价 | 判断 |",
+            "|---|---|---:|---:|---:|---:|---:|---|",
         ]
     )
     index_rows = (
@@ -417,12 +451,11 @@ def render(status: dict) -> str:
     policy = load_policy()
     holdings_cost = status.get("holdings_cost") or {}
     principal = float(status.get("building_principal") or 10000)
-    for name, market_code, fund_code in index_rows:
+    for name, _market_code, fund_code in index_rows:
         index = status["indexes"].get(name, {})
         pe = index.get("pe_ttm")
         percentile = index.get("pe_percentile")
         percentile_1y = index.get("pe_percentile_1y")
-        data_date = index.get("date", "待核验")
         premium_pct = index.get("qdii_premium_pct")
         dd_pct = index.get("drawdown_from_52w_high_pct")
         if name in ("沪深300", "中证500"):
@@ -431,10 +464,10 @@ def render(status: dict) -> str:
             premium_text = f"{premium_pct:.2f}%"
         else:
             premium_text = "待核验"
-        dd_text = f"{dd_pct:.2f}%" if isinstance(dd_pct, (int, float)) else "-"
+        dd_text = f"{dd_pct:.1f}%" if isinstance(dd_pct, (int, float)) else "-"
         code, weight = INDEX_WEIGHT[name]
         held = float(holdings_cost.get(code, 0) or 0)
-        action, reason = resolve_action(
+        action, _reason = resolve_action(
             name,
             percentile,
             percentile_1y=percentile_1y,
@@ -447,44 +480,34 @@ def render(status: dict) -> str:
             target_amount=principal * weight,
         )
         pe_text = f"{pe:.2f}" if isinstance(pe, (int, float)) else "-"
-        if name == "纳斯达克100" or index.get("reference_only"):
-            percentile_text = (
-                f"{percentile:.2f}%"
-                if isinstance(percentile, (int, float))
-                else "无统计分位"
-            )
-            percentile_1y_text = (
-                f"{percentile_1y:.2f}%"
-                if isinstance(percentile_1y, (int, float))
-                else "无统计分位"
-            )
-            if not data_date or data_date == "待核验":
-                data_date = index.get("date") or status.get("as_of") or "-"
-            if isinstance(premium_pct, (int, float)):
-                premium_text = f"{premium_pct:.2f}%"
+        if isinstance(percentile, (int, float)):
+            p10 = f"{percentile:.1f}%"
+        elif name == "纳斯达克100":
+            p10 = "无统计"
         else:
-            percentile_text = (
-                f"{percentile:.2f}%" if isinstance(percentile, (int, float)) else "-"
-            )
-            percentile_1y_text = (
-                f"{percentile_1y:.2f}%"
-                if isinstance(percentile_1y, (int, float))
-                else "-"
-            )
+            p10 = "-"
+        if isinstance(percentile_1y, (int, float)):
+            p1 = f"{percentile_1y:.1f}%"
+        elif name == "纳斯达克100":
+            p1 = "无统计"
+        else:
+            p1 = "-"
+        short_name = {
+            "沪深300": "沪深300",
+            "中证500": "中证500",
+            "标普500": "标普500",
+            "纳斯达克100": "纳指100",
+        }.get(name, name)
         decision = decision_label(action)
         if action == "reference" or name == "纳斯达克100":
             decision = "仅参考·个人定投另计"
         elif action == "overvalued_watch":
-            decision = "高估观察，当前无持仓无需止盈"
+            decision = "高估观察"
         elif action == "unknown":
-            if index.get("verified") is not True:
-                decision = "未核验/校验失败，禁止自动买入"
-            else:
-                decision = "数据不足，暂停自动买入"
+            decision = "未核验" if index.get("verified") is not True else "数据不足"
         lines.append(
-            f"| {name} | `{market_code}` | `{fund_code}` | {pe_text} | "
-            f"{percentile_text} | {percentile_1y_text} | {dd_text} | {premium_text} | "
-            f"{data_date} | {decision} |"
+            f"| {short_name} | `{fund_code}` | {pe_text} | {p10} | {p1} | "
+            f"{dd_text} | {premium_text} | {decision} |"
         )
     lines.extend(
         [
@@ -496,16 +519,12 @@ def render(status: dict) -> str:
             "纳指 PE 来自 QQQ（stockanalysis/yfinance）**仅供参考**；样本不足时分位显示「无统计分位」。"
             "爬虫失败严禁用过期缓存做买卖。QDII溢价＞2%暂缓买入。"
             "短债012773不看PE/回撤。周四约12:00定投周报；工作日监测档位/建仓事件邮件。",
-        ]
-    )
-    lines.extend(
-        [
             "",
             f"> 数据状态：{status['data_status']}。AI 只提供研究建议，不自动下单。",
             END,
         ]
     )
-    return "\n".join(lines)
+    return "\n".join(lines) + "\n"
 
 
 def main() -> None:
