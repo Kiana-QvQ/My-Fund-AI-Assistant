@@ -140,8 +140,12 @@ def parse_trade_date(value: date | str | None = None) -> date:
     """Normalize trade date to Asia/Shanghai calendar date."""
     if value is None:
         return today_cst()
-    if isinstance(value, date) and not isinstance(value, datetime):
+    # Prefer exact `date` (not datetime subclass). Avoid isinstance(..., datetime)
+    # because unit tests may patch the module-level `datetime` symbol with a Mock.
+    if type(value) is date:
         return value
+    if hasattr(value, "year") and hasattr(value, "hour"):
+        return date(int(value.year), int(value.month), int(value.day))
     text = str(value).strip()[:10]
     return datetime.strptime(text, "%Y-%m-%d").date()
 

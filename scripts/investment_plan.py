@@ -539,6 +539,55 @@ def allocate_dca_plan(
     return lines
 
 
+def apply_avg_cost_soft_gates(
+    lines: list[dict],
+    snapshot: dict | None,
+    *,
+    policy: dict | None = None,
+    holdings_doc: dict | None = None,
+) -> list[dict]:
+    """Soft-scale equity weekly amounts when NAV is rich vs holding avg cost."""
+    from cost_basis_metrics import (  # noqa: WPS433
+        apply_soft_buy_scale,
+        holding_cost_metrics,
+        holdings_by_code,
+    )
+    from fund_purchase_gate import fund_record  # noqa: WPS433
+    from record_holding import load_holdings  # noqa: WPS433
+
+    policy = policy or load_policy()
+    held = holdings_by_code(holdings_doc or load_holdings())
+    out: list[dict] = []
+    for line in lines:
+        row = dict(line)
+        code = str(row.get("fund_code") or "")
+        weekly = float(row.get("weekly") or 0)
+        if row.get("role") != "equity" or weekly <= 0:
+            out.append(row)
+            continue
+        fund = fund_record(snapshot, code)
+        metrics = holding_cost_metrics(held.get(code), fund.get("nav"))
+        row["avg_cost"] = metrics.get("avg_cost")
+        row["vs_avg_pct"] = metrics.get("vs_avg_pct")
+        new_amt, reason, scale = apply_soft_buy_scale(
+            weekly,
+            fund_code=code,
+            vs_avg_percent=metrics.get("vs_avg_pct"),
+            policy=policy,
+            is_personal_dca=False,
+        )
+        row["avg_cost_scale"] = scale
+        if reason and new_amt != weekly:
+            row["weekly"] = new_amt
+            if new_amt <= 0:
+                row["executable"] = False
+                row["paused"] = True
+                row["action"] = "avg_cost_soft"
+            row["reason"] = f"{row.get('reason') or ''}；{reason}".lstrip("；")
+        out.append(row)
+    return out
+
+
 def apply_dca_purchase_gates(
     lines: list[dict],
     snapshot: dict | None,
@@ -608,6 +657,8 @@ def apply_dca_purchase_gates(
         row["executable"] = True
         row["weekly"] = new_amt
         out.append(row)
+
+    out = apply_avg_cost_soft_gates(out, snapshot, policy=policy)
 
     if residual_extra > 0:
         for row in out:

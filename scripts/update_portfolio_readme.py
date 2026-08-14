@@ -20,6 +20,8 @@ SCRIPTS = Path(__file__).resolve().parent
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
+from cost_basis_metrics import holding_cost_metrics  # noqa: E402
+from fund_nav import EQUITY_COST_FUNDS  # noqa: E402
 from investment_plan import (  # noqa: E402
     build_summary_line,
     dca_summary_line,
@@ -197,11 +199,26 @@ def build_status() -> dict:
         else:
             decision = "等待确认"
             reason = f"申购状态：{purchase_status}"
+
+        metrics = holding_cost_metrics(item, fund.get("nav"))
+        if (
+            item.get("fund_code") in EQUITY_COST_FUNDS
+            and metrics.get("vs_avg_pct") is not None
+        ):
+            sign = "+" if metrics["vs_avg_pct"] >= 0 else ""
+            reason = (
+                f"{reason}；相对持仓均价 {sign}{metrics['vs_avg_pct']:.2f}%"
+                f"（均价 {metrics['avg_cost']:.4f} / 净值 {float(fund.get('nav')):.4f}）"
+            )
+
         rows.append(
             {
                 "fund_code": item["fund_code"],
                 "name": item["name"],
                 "cost_basis": cost,
+                "shares": metrics.get("shares"),
+                "avg_cost": metrics.get("avg_cost"),
+                "vs_avg_pct": metrics.get("vs_avg_pct"),
                 "target_percent": target_percent,
                 "target_amount": target_amount,
                 "current_percent": current_percent,
@@ -342,16 +359,28 @@ def render(status: dict) -> str:
         f"整体建仓进度：**{status['building_progress_percent']:.2f}%**",
         f"> {status['overall_decision']}",
         "> 状态灯：🟢 可买/微建仓/可建仓 · 🟠 止盈观察 · 🟡 观望/暂停/溢价暂缓 · ⚪ 等待数据",
-        "> 说明：当前投入占比 = 单项已投入金额 ÷ 1万元建仓本金；目标金额 = 建仓本金 × 目标仓位。",
+        "> 说明：当前投入占比 = 单项已投入金额 ÷ 1万元建仓本金；目标金额 = 建仓本金 × 目标仓位。"
+        " 权益相对均价 =（最新净值 − 持仓均价）/ 持仓均价；≥8% 时组合定投/建仓建议软降级。",
         "",
-        "| 基金 | 代码 | 已投入 | 目标仓位 | 目标金额 | 当前投入占比 | 还差目标金额 | 今日状态 |",
-        "|---|---:|---:|---:|---:|---:|---:|---|",
+        "| 基金 | 代码 | 已投入 | 份额 | 持仓均价 | 最新净值 | 相对均价 | 目标仓位 | 还差目标 | 今日状态 |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---|",
     ]
     for row in status["rows"]:
+        shares = row.get("shares")
+        avg = row.get("avg_cost")
+        nav = row.get("nav")
+        vs = row.get("vs_avg_pct")
+        shares_text = f"{shares:.4f}" if isinstance(shares, (int, float)) else "-"
+        avg_text = f"{avg:.4f}" if isinstance(avg, (int, float)) else "-"
+        nav_text = f"{float(nav):.4f}" if isinstance(nav, (int, float)) else "-"
+        if isinstance(vs, (int, float)):
+            vs_text = f"**{vs:+.2f}%**"
+        else:
+            vs_text = "-"
         lines.append(
             f"| {row['name']} | `{row['fund_code']}` | "
-            f"{money(row['cost_basis'])} | {row['target_percent']:.2f}% | "
-            f"{money(row['target_amount'])} | **{row['current_percent']:.2f}%** | "
+            f"{money(row['cost_basis'])} | {shares_text} | {avg_text} | {nav_text} | "
+            f"{vs_text} | {row['target_percent']:.2f}% | "
             f"{money(row['shortfall'])} | {row['decision']} |"
         )
     equity_notes = status.get("equity_notes") or []

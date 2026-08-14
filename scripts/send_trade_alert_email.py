@@ -275,8 +275,41 @@ def collect_build(snapshot: dict, policy: dict) -> list[dict]:
                 line["action"] = "purchase_block"
                 line["reason"] = f"{line.get('reason') or ''}；{block}".lstrip("；")
             else:
-                line["amount"] = new_amt
-                line["executable"] = True
+                from cost_basis_metrics import (  # noqa: WPS433
+                    apply_soft_buy_scale,
+                    holding_cost_metrics,
+                )
+
+                held_row = {"cost_basis": float(held.get(code, 0) or 0)}
+                # Prefer live holdings shares when present.
+                try:
+                    full = json.loads(HOLDINGS_PATH.read_text(encoding="utf-8"))
+                    for item in full.get("holdings") or []:
+                        if str(item.get("fund_code")) == code:
+                            held_row = item
+                            break
+                except OSError:
+                    pass
+                metrics = holding_cost_metrics(held_row, fund.get("nav"))
+                line["avg_cost"] = metrics.get("avg_cost")
+                line["vs_avg_pct"] = metrics.get("vs_avg_pct")
+                scaled, soft_reason, scale = apply_soft_buy_scale(
+                    new_amt,
+                    fund_code=code,
+                    vs_avg_percent=metrics.get("vs_avg_pct"),
+                    policy=policy,
+                )
+                line["avg_cost_scale"] = scale
+                line["amount"] = scaled
+                line["executable"] = scaled > 0
+                if soft_reason and scaled != new_amt:
+                    line["reason"] = (
+                        f"{line.get('reason') or ''}；{soft_reason}".lstrip("；")
+                    )
+                    if scaled <= 0:
+                        line["active"] = False
+                        line["state"] = "均价软降"
+                        line["tier_label"] = "均价软降"
         else:
             line["executable"] = False
         lines.append(line)

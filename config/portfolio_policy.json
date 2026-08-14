@@ -107,7 +107,16 @@
     "qdii_premium_resume_below": 0.01,
     "a_share_take_profit_percentile_at_or_above": 90,
     "us_take_profit_percentile_at_or_above": 90,
-    "note": "QDII溢价：>2%暂停；≤1%才恢复；1%<溢价≤2%继续等待。定投与建仓信号不合并。"
+    "avg_cost_soft_gate": {
+      "enabled": true,
+      "apply_to": ["460300", "160119", "016452"],
+      "premium_start_pct": 8.0,
+      "premium_full_pct": 15.0,
+      "min_scale": 0.5,
+      "exclude_personal_dca": true,
+      "note": "现价相对持仓均价≥8%开始软降组合定投/建仓建议金额，15%降至50%；个人纳指日定投不受影响。仅展示+软约束，不替代估值主信号。"
+    },
+    "note": "QDII溢价：>2%暂停；≤1%才恢复；1%<溢价≤2%继续等待。定投与建仓信号不合并。权益持仓均价用于展示与软降级。"
   },
   "bootstrap": {
     "enabled": true,

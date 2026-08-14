@@ -17,6 +17,7 @@ reports/*
 !data/alert_state.json
 !data/sp500_pe_multpl.json
 !data/ndx_pe_yfinance_ref.json
+!data/fund_nav_history.json
 !logs/.gitkeep
 !reports/.gitkeep
 

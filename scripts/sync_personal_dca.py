@@ -27,6 +27,12 @@ ROOT = _SCRIPTS.parent
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
+from fund_nav import (  # noqa: E402
+    ensure_nav_range,
+    estimate_shares,
+    fee_percent_from_snapshot,
+    lookup_nav_on_or_before,
+)
 from investment_plan import (  # noqa: E402
     personal_dca_line,
     personal_dca_schedules,
@@ -41,8 +47,38 @@ from record_holding import (  # noqa: E402
     today_cst,
 )
 
+SNAPSHOT_PATH = ROOT / "data" / "market_snapshot.json"
+
 
 IsTradingDay = Callable[[date], bool]
+
+
+def _load_snapshot() -> dict:
+    if not SNAPSHOT_PATH.is_file():
+        return {}
+    return json.loads(SNAPSHOT_PATH.read_text(encoding="utf-8"))
+
+
+def resolve_nav_for_buy(
+    fund_code: str,
+    day: date,
+    *,
+    snapshot: dict | None = None,
+) -> tuple[float | None, str | None]:
+    """Best-effort NAV for auto-ledger: history cache, else snapshot."""
+    try:
+        series = ensure_nav_range(fund_code, start=day, end=day)
+        hit = lookup_nav_on_or_before(series, day)
+        if hit is not None:
+            return float(hit[1]), hit[0]
+    except Exception as exc:  # noqa: BLE001
+        print(f"警告: {fund_code} {day} 历史净值不可用（{exc}）", file=sys.stderr)
+    snap = snapshot if snapshot is not None else _load_snapshot()
+    fund = (snap.get("funds") or {}).get(str(fund_code)) or {}
+    nav = fund.get("nav")
+    if isinstance(nav, (int, float)) and float(nav) > 0:
+        return float(nav), str(fund.get("nav_date") or day.isoformat())[:10]
+    return None, None
 
 
 def default_is_trading_day(day: date) -> bool:
@@ -133,11 +169,13 @@ def sync_personal_dca(
     policy: dict | None = None,
     is_trading_day: IsTradingDay | None = None,
     dry_run: bool = False,
+    snapshot: dict | None = None,
 ) -> list[dict]:
     """Book missing personal DCA installs into ``doc``; return booked rows."""
     as_of = as_of or today_cst()
     policy = policy or load_policy()
     check = is_trading_day or default_is_trading_day
+    snap = snapshot if snapshot is not None else _load_snapshot()
     booked: list[dict] = []
 
     for fund_code, schedule in personal_dca_schedules(policy).items():
@@ -176,6 +214,11 @@ def sync_personal_dca(
                 continue
 
             amount = float(line["today_amount"])
+            nav, nav_date = resolve_nav_for_buy(fund_code, day, snapshot=snap)
+            fee = fee_percent_from_snapshot(snap, fund_code)
+            shares = None
+            if nav is not None:
+                shares = estimate_shares(amount, nav, fee_percent=fee)
             entry = {
                 "fund_code": fund_code,
                 "trade_date": day.isoformat(),
@@ -183,6 +226,9 @@ def sync_personal_dca(
                 "note": note,
                 "purpose": "dca",
                 "reason": line.get("reason"),
+                "nav": nav,
+                "nav_date": nav_date,
+                "shares": shares,
             }
             if dry_run:
                 booked.append(entry)
@@ -195,6 +241,8 @@ def sync_personal_dca(
                         "amount": amount,
                         "purpose": "dca",
                         "note": note,
+                        "nav": nav,
+                        "shares": shares,
                     }
                 )
                 continue
@@ -206,6 +254,8 @@ def sync_personal_dca(
                 note,
                 purpose="dca",
                 trade_date=day,
+                nav=nav,
+                shares=shares,
             )
             booked.append(entry)
 

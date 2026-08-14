@@ -82,6 +82,10 @@ jobs:
         if: steps.gate.outputs.run == 'yes'
         run: python scripts/sync_personal_dca.py
 
+      - name: Backfill equity shares / avg cost from NAV history
+        if: steps.gate.outputs.run == 'yes'
+        run: python scripts/backfill_equity_shares.py
+
       - name: Refresh US valuation only (A-share holiday)
         if: steps.gate.outputs.run != 'yes' && steps.gate.outputs.run_us == 'yes'
         run: |
@@ -153,6 +157,7 @@ jobs:
           git add -f README.md data/market_snapshot.json data/portfolio_status.json
           git add -f config/us_pe_snapshot.json data/sp500_pe_multpl.json
           git add -f config/portfolio_holdings.json || true
+          git add -f data/fund_nav_history.json || true
           git add -f data/alert_state.json || true
           if [ -f data/ndx_pe_yfinance_ref.json ]; then
             git add -f data/ndx_pe_yfinance_ref.json
@@ -173,6 +178,7 @@ jobs:
             config/portfolio_holdings.json
             data/alert_state.json
             data/ndx_pe_yfinance_ref.json
+            data/fund_nav_history.json
           )
           resolve_auto_paths() {
             for f in "${AUTO_PATHS[@]}"; do
