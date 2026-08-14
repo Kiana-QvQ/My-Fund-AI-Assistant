@@ -136,15 +136,26 @@ def find_duplicate_tx(
     return None
 
 
+def parse_trade_date(value: date | str | None = None) -> date:
+    """Normalize trade date to Asia/Shanghai calendar date."""
+    if value is None:
+        return today_cst()
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    text = str(value).strip()[:10]
+    return datetime.strptime(text, "%Y-%m-%d").date()
+
+
 def _prepare_tx_ids(
     doc: dict,
     payload: dict,
     *,
     transaction_id: str | None = None,
     force_duplicate: bool = False,
+    trade_date: date | str | None = None,
 ) -> tuple[str, str]:
     """Return (transaction_id, idempotency_key); raise if duplicate."""
-    trade_date = today_cst().isoformat()
+    trade_date_str = parse_trade_date(trade_date).isoformat()
     side = str(payload.get("side") or "")
     fund_code = str(payload.get("fund_code") or "")
     sell_cost = None
@@ -155,7 +166,7 @@ def _prepare_tx_ids(
     idem_key = build_idempotency_key(
         side=side,
         fund_code=fund_code,
-        trade_date=trade_date,
+        trade_date=trade_date_str,
         amount=payload.get("amount"),
         proceeds=payload.get("proceeds"),
         cost=sell_cost,
@@ -180,12 +191,17 @@ def _append_tx(
     *,
     transaction_id: str,
     idempotency_key: str,
+    trade_date: date | str | None = None,
 ) -> dict:
+    day = parse_trade_date(trade_date)
+    recorded_at = datetime.now(CST)
+    if day != recorded_at.date():
+        recorded_at = datetime(day.year, day.month, day.day, 12, 0, 0, tzinfo=CST)
     tx = {
         "transaction_id": transaction_id,
         "idempotency_key": idempotency_key,
-        "trade_date": today_cst().isoformat(),
-        "time": datetime.now(CST).isoformat(timespec="seconds"),
+        "trade_date": day.isoformat(),
+        "time": recorded_at.isoformat(timespec="seconds"),
         **payload,
     }
     doc.setdefault("transactions", []).append(tx)
@@ -244,6 +260,7 @@ def apply_buy(
     nav: float | None = None,
     transaction_id: str | None = None,
     force_duplicate: bool = False,
+    trade_date: date | str | None = None,
 ) -> dict:
     if fund_code not in CATALOG:
         raise SystemExit(f"未知基金代码: {fund_code}，可选: {', '.join(CATALOG)}")
@@ -274,6 +291,7 @@ def apply_buy(
             amount=amount, shares=float(buy_shares), nav=float(nav), side="买入"
         )
 
+    day = parse_trade_date(trade_date)
     payload = {
         "side": "buy",
         "fund_code": fund_code,
@@ -293,6 +311,7 @@ def apply_buy(
         payload,
         transaction_id=transaction_id,
         force_duplicate=force_duplicate,
+        trade_date=day,
     )
 
     row["cost_basis"] = round(float(row.get("cost_basis") or 0) + amount, 2)
@@ -305,7 +324,13 @@ def apply_buy(
     if note:
         row["note"] = note
 
-    _append_tx(doc, payload, transaction_id=tx_id, idempotency_key=idem_key)
+    _append_tx(
+        doc,
+        payload,
+        transaction_id=tx_id,
+        idempotency_key=idem_key,
+        trade_date=day,
+    )
     return row
 
 
@@ -557,6 +582,11 @@ def main() -> None:
         default=None,
         help="资金用途，用于按实际成交统计定投预算",
     )
+    buy.add_argument(
+        "--date",
+        default=None,
+        help="成交日 YYYY-MM-DD（北京时间），默认今天；用于补记历史定投",
+    )
     _add_common_tx_args(buy)
 
     sell = sub.add_parser(
@@ -605,6 +635,7 @@ def main() -> None:
             purpose=args.purpose,
             shares=args.shares,
             nav=args.nav,
+            trade_date=getattr(args, "date", None),
             **tx_kwargs,
         )
     elif args.command == "sell":
