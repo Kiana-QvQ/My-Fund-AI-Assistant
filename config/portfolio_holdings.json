@@ -23,7 +23,7 @@
       "note": "更正：中证500误记多10元冲回",
       "avg_cost": 2.109402,
       "shares_source": "sum_buy_estimated",
-      "avg_cost_updated_at": "2026-08-14T11:09:40"
+      "avg_cost_updated_at": "2026-08-14T05:42:21"
     },
     {
       "fund_code": "016452",
@@ -35,7 +35,7 @@
       "note": "纳斯达克100交易日定投",
       "avg_cost": 2.257788,
       "shares_source": "sum_buy_estimated",
-      "avg_cost_updated_at": "2026-08-14T11:09:40"
+      "avg_cost_updated_at": "2026-08-14T05:42:21"
     },
     {
       "fund_code": "460300",
@@ -47,7 +47,7 @@
       "note": "更正：沪深300补记10元（实为20非10）",
       "avg_cost": 1.179515,
       "shares_source": "sum_buy_estimated",
-      "avg_cost_updated_at": "2026-08-14T11:09:40"
+      "avg_cost_updated_at": "2026-08-14T05:42:21"
     }
   ],
   "transactions": [
