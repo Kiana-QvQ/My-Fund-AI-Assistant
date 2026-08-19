@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-08-18",
+  "as_of": "2026-08-19",
   "base_currency": "CNY",
   "building_principal": 10000.0,
   "initial_build_percent": 20.0,
@@ -23,19 +23,19 @@
       "note": "更正：中证500误记多10元冲回",
       "avg_cost": 2.109402,
       "shares_source": "sum_buy_estimated",
-      "avg_cost_updated_at": "2026-08-18T04:41:09"
+      "avg_cost_updated_at": "2026-08-19T04:42:24"
     },
     {
       "fund_code": "016452",
       "name": "南方纳斯达克100指数发起(QDII)A",
-      "shares": 70.5669,
-      "cost_basis": 160.0,
+      "shares": 74.8567,
+      "cost_basis": 170.0,
       "target_percent": 3.0,
       "asset_class": "美股QDII",
       "note": "纳斯达克100交易日定投",
-      "avg_cost": 2.267352,
+      "avg_cost": 2.271006,
       "shares_source": "sum_buy_estimated",
-      "avg_cost_updated_at": "2026-08-18T04:41:09"
+      "avg_cost_updated_at": "2026-08-19T04:42:24"
     },
     {
       "fund_code": "460300",
@@ -47,7 +47,7 @@
       "note": "更正：沪深300补记10元（实为20非10）",
       "avg_cost": 1.179515,
       "shares_source": "sum_buy_estimated",
-      "avg_cost_updated_at": "2026-08-18T04:41:09"
+      "avg_cost_updated_at": "2026-08-19T04:42:24"
     }
   ],
   "transactions": [
@@ -596,6 +596,20 @@
       "cost_delta": 10.0,
       "shares": 4.2825,
       "nav": 2.3323,
+      "note": "纳斯达克100交易日定投",
+      "purpose": "dca"
+    },
+    {
+      "transaction_id": "c433f3e2-8647-49a2-8540-cfafc307f841",
+      "idempotency_key": "99099708224d6a78028bfc2b",
+      "trade_date": "2026-08-19",
+      "time": "2026-08-19T12:42:22+08:00",
+      "side": "buy",
+      "fund_code": "016452",
+      "amount": 10.0,
+      "cost_delta": 10.0,
+      "shares": 4.2898,
+      "nav": 2.3283,
       "note": "纳斯达克100交易日定投",
       "purpose": "dca"
     }
