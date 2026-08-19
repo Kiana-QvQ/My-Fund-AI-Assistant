@@ -23,31 +23,31 @@
       "note": "更正：中证500误记多10元冲回",
       "avg_cost": 2.109402,
       "shares_source": "sum_buy_estimated",
-      "avg_cost_updated_at": "2026-08-19T04:42:24"
+      "avg_cost_updated_at": "2026-08-19T14:55:03"
     },
     {
       "fund_code": "016452",
       "name": "南方纳斯达克100指数发起(QDII)A",
-      "shares": 74.8567,
+      "shares": 74.7895,
       "cost_basis": 170.0,
       "target_percent": 3.0,
       "asset_class": "美股QDII",
       "note": "纳斯达克100交易日定投",
-      "avg_cost": 2.271006,
+      "avg_cost": 2.273046,
       "shares_source": "sum_buy_estimated",
-      "avg_cost_updated_at": "2026-08-19T04:42:24"
+      "avg_cost_updated_at": "2026-08-19T14:55:03"
     },
     {
       "fund_code": "460300",
       "name": "华泰柏瑞沪深300ETF联接A",
-      "shares": 525.6398,
-      "cost_basis": 620.0,
+      "shares": 692.7248,
+      "cost_basis": 820.0,
       "target_percent": 27.0,
       "asset_class": "A股宽基",
-      "note": "更正：沪深300补记10元（实为20非10）",
-      "avg_cost": 1.179515,
+      "note": "沪深300建仓",
+      "avg_cost": 1.183731,
       "shares_source": "sum_buy_estimated",
-      "avg_cost_updated_at": "2026-08-19T04:42:24"
+      "avg_cost_updated_at": "2026-08-19T14:55:03"
     }
   ],
   "transactions": [
@@ -546,13 +546,13 @@
       "fund_code": "016452",
       "amount": 10.0,
       "cost_delta": 10.0,
-      "shares": 4.3234,
-      "nav": 2.3102,
+      "shares": 4.2768,
+      "nav": 2.3354,
       "note": "纳斯达克100交易日定投",
       "purpose": "dca",
-      "nav_date": "2026-08-12",
+      "nav_date": "2026-08-13",
       "shares_source": "estimated_nav",
-      "nav_match": "on_or_before:2026-08-12"
+      "nav_match": "exact"
     },
     {
       "transaction_id": "080afd9a-faee-4b44-9dcd-d5a079c7d5b0",
@@ -563,13 +563,13 @@
       "fund_code": "016452",
       "amount": 10.0,
       "cost_delta": 10.0,
-      "shares": 4.3234,
-      "nav": 2.3102,
+      "shares": 4.2825,
+      "nav": 2.3323,
       "note": "纳斯达克100交易日定投",
       "purpose": "dca",
-      "nav_date": "2026-08-12",
+      "nav_date": "2026-08-14",
       "shares_source": "estimated_nav",
-      "nav_match": "on_or_before:2026-08-12"
+      "nav_match": "exact"
     },
     {
       "transaction_id": "4e563ced-0549-4779-b98b-7162d76cc053",
@@ -580,10 +580,13 @@
       "fund_code": "016452",
       "amount": 10.0,
       "cost_delta": 10.0,
-      "shares": 4.2768,
-      "nav": 2.3354,
+      "shares": 4.2898,
+      "nav": 2.3283,
       "note": "纳斯达克100交易日定投",
-      "purpose": "dca"
+      "purpose": "dca",
+      "nav_date": "2026-08-17",
+      "shares_source": "estimated_nav",
+      "nav_match": "exact"
     },
     {
       "transaction_id": "2f1085fa-8241-4dcb-9a5b-58eb06da1b55",
@@ -594,10 +597,13 @@
       "fund_code": "016452",
       "amount": 10.0,
       "cost_delta": 10.0,
-      "shares": 4.2825,
-      "nav": 2.3323,
+      "shares": 4.2898,
+      "nav": 2.3283,
       "note": "纳斯达克100交易日定投",
-      "purpose": "dca"
+      "purpose": "dca",
+      "nav_date": "2026-08-17",
+      "shares_source": "estimated_nav",
+      "nav_match": "on_or_before:2026-08-17"
     },
     {
       "transaction_id": "c433f3e2-8647-49a2-8540-cfafc307f841",
@@ -611,7 +617,27 @@
       "shares": 4.2898,
       "nav": 2.3283,
       "note": "纳斯达克100交易日定投",
-      "purpose": "dca"
+      "purpose": "dca",
+      "nav_date": "2026-08-17",
+      "shares_source": "estimated_nav",
+      "nav_match": "on_or_before:2026-08-17"
+    },
+    {
+      "transaction_id": "041fb567-3ed6-45ea-b472-6b108dc9312e",
+      "idempotency_key": "5a5e1a05bfff2dba2b1da496",
+      "trade_date": "2026-08-19",
+      "time": "2026-08-19T14:54:39+08:00",
+      "side": "buy",
+      "fund_code": "460300",
+      "amount": 200.0,
+      "cost_delta": 200.0,
+      "shares": 167.085,
+      "nav": 1.1958,
+      "note": "沪深300建仓",
+      "purpose": "build",
+      "nav_date": "2026-08-18",
+      "shares_source": "estimated_nav",
+      "nav_match": "on_or_before:2026-08-18"
     }
   ]
 }
