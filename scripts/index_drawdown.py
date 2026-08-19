@@ -9,6 +9,8 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 from typing import Callable
 
+from index_spot import A_SHARE_SPOT_CODES, attach_a_share_spots
+
 import pandas as pd
 
 CST = timezone(timedelta(hours=8))
@@ -180,6 +182,8 @@ def attach_drawdowns(
             item["drawdown_from_52w_high_pct"] = None
             item["drawdown_status"] = "fetch_failed"
             item["drawdown_reason"] = str(exc)
+    # Live App-style quotes (intraday); daily close above remains for 52w drawdown.
+    attach_a_share_spots(indexes, names=tuple(n for n in names if n in A_SHARE_SPOT_CODES))
     # Explicit skip for NDX
     ndx = indexes.setdefault("纳斯达克100", {})
     if "drawdown_status" not in ndx:

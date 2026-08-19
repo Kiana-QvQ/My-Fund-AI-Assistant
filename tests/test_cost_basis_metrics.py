@@ -14,6 +14,8 @@ if str(SCRIPTS) not in sys.path:
 from cost_basis_metrics import (  # noqa: E402
     apply_soft_buy_scale,
     avg_cost,
+    format_index_level,
+    implied_avg_index_level,
     soft_buy_scale,
     vs_avg_pct,
 )
@@ -26,6 +28,18 @@ class AvgCostHelpersTests(unittest.TestCase):
         self.assertEqual(avg_cost(100, 50), 2.0)
         self.assertEqual(vs_avg_pct(2.2, 2.0), 10.0)
         self.assertIsNone(avg_cost(100, None))
+
+    def test_implied_avg_index_level(self) -> None:
+        # close 4726, avg/nav = 1.1837/1.1958 → buy avg ~4678
+        level = implied_avg_index_level(4725.813, 1.183731, 1.1958)
+        self.assertIsNotNone(level)
+        assert level is not None
+        self.assertAlmostEqual(level, 4725.813 * 1.183731 / 1.1958, places=3)
+        self.assertEqual(format_index_level(4725.813), "4725.81")
+        self.assertEqual(format_index_level(4582.68), "4582.68")
+        self.assertEqual(format_index_level(29.65), "29.65")
+        self.assertEqual(format_index_level(None), "-")
+        self.assertIsNone(implied_avg_index_level(None, 1.0, 1.0))
 
     def test_estimate_shares_with_fee(self) -> None:
         # 0.12% fee → net = amount / 1.0012

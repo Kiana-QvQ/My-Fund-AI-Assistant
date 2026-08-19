@@ -107,6 +107,40 @@ def apply_soft_buy_scale(
     return amt, reason, scale
 
 
+def implied_avg_index_level(
+    price_close: float | None,
+    avg_cost: float | None,
+    nav: float | None,
+) -> float | None:
+    """Estimate buy-average index level from current close × (avg_cost / nav).
+
+    Assumes the linked fund tracks the index in percentage terms (fees/tracking
+    error ignored). Same direction as vs_avg_pct.
+    """
+    if (
+        not isinstance(price_close, (int, float))
+        or not isinstance(avg_cost, (int, float))
+        or not isinstance(nav, (int, float))
+    ):
+        return None
+    close = float(price_close)
+    avg = float(avg_cost)
+    nav_f = float(nav)
+    if close <= 0 or avg <= 0 or nav_f <= 0:
+        return None
+    return round(close * (avg / nav_f), 4)
+
+
+def format_index_level(value: float | None) -> str:
+    """App-style index level (e.g. 4582.68), not truncated integers."""
+    if not isinstance(value, (int, float)):
+        return "-"
+    level = float(value)
+    if level >= 100:
+        return f"{level:.2f}"
+    return f"{level:.2f}"
+
+
 def format_avg_cost_bit(metrics_or_line: dict | None) -> str:
     """Compact email/readme snippet: 均价/净值/相对均价."""
     row = metrics_or_line or {}

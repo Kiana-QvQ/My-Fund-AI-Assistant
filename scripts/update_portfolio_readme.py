@@ -20,8 +20,14 @@ SCRIPTS = Path(__file__).resolve().parent
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-from cost_basis_metrics import holding_cost_metrics  # noqa: E402
+from cost_basis_metrics import (  # noqa: E402
+    format_index_level,
+    holding_cost_metrics,
+    implied_avg_index_level,
+    vs_avg_pct,
+)
 from fund_nav import EQUITY_COST_FUNDS  # noqa: E402
+from index_spot import attach_a_share_spots  # noqa: E402
 from investment_plan import (  # noqa: E402
     build_summary_line,
     dca_summary_line,
@@ -44,6 +50,13 @@ INDEX_WEIGHT = {
     "中证500": ("160119", 0.11),
     "标普500": ("050025", 0.08),
     "纳斯达克100": ("016452", 0.03),
+}
+
+FUND_TO_INDEX = {
+    "460300": "沪深300",
+    "160119": "中证500",
+    "050025": "标普500",
+    "016452": "纳斯达克100",
 }
 
 
@@ -164,6 +177,11 @@ def build_status() -> dict:
     as_of = generated.date().isoformat()
     rows = []
     indexes = snapshot.get("indexes", {})
+    # Prefer live App-style points (000300 ≈ 4582.68) over yesterday's daily close.
+    try:
+        attach_a_share_spots(indexes)
+    except Exception as exc:  # noqa: BLE001
+        print(f"警告: 实时指数点位刷新失败（{exc}）", file=sys.stderr)
 
     for item in holdings:
         cost = float(item.get("cost_basis") or 0)
@@ -201,6 +219,23 @@ def build_status() -> dict:
             reason = f"申购状态：{purchase_status}"
 
         metrics = holding_cost_metrics(item, fund.get("nav"))
+        index_name = FUND_TO_INDEX.get(str(item.get("fund_code") or ""))
+        index_meta = indexes.get(index_name or "", {}) if index_name else {}
+        # Live quote for display; prev/daily close anchors buy-average estimate.
+        index_spot = index_meta.get("price_spot")
+        index_anchor = (
+            index_meta.get("price_prev_close")
+            or index_meta.get("price_close")
+            or index_spot
+        )
+        index_display = index_spot if isinstance(index_spot, (int, float)) else index_anchor
+        avg_index = implied_avg_index_level(
+            index_anchor, metrics.get("avg_cost"), metrics.get("nav")
+        )
+        vs_index = vs_avg_pct(
+            float(index_display) if isinstance(index_display, (int, float)) else None,
+            avg_index,
+        )
         if (
             item.get("fund_code") in EQUITY_COST_FUNDS
             and metrics.get("vs_avg_pct") is not None
@@ -210,6 +245,11 @@ def build_status() -> dict:
                 f"{reason}；相对持仓均价 {sign}{metrics['vs_avg_pct']:.2f}%"
                 f"（均价 {metrics['avg_cost']:.4f} / 净值 {float(fund.get('nav')):.4f}）"
             )
+            if isinstance(index_display, (int, float)) and avg_index is not None:
+                reason += (
+                    f"；指数点位 {format_index_level(index_display)}"
+                    f" / 买入均点 {format_index_level(avg_index)}"
+                )
 
         rows.append(
             {
@@ -219,6 +259,17 @@ def build_status() -> dict:
                 "shares": metrics.get("shares"),
                 "avg_cost": metrics.get("avg_cost"),
                 "vs_avg_pct": metrics.get("vs_avg_pct"),
+                "index_name": index_name,
+                "index_close": float(index_display)
+                if isinstance(index_display, (int, float))
+                else None,
+                "index_spot": float(index_spot)
+                if isinstance(index_spot, (int, float))
+                else None,
+                "avg_index_level": avg_index,
+                "vs_index_pct": vs_index,
+                "index_price_date": index_meta.get("price_spot_as_of")
+                or index_meta.get("date"),
                 "target_percent": target_percent,
                 "target_amount": target_amount,
                 "current_percent": current_percent,
@@ -373,7 +424,9 @@ def render(status: dict) -> str:
         f"> {status['overall_decision']}",
         "> 状态灯：🟢 可买/微建仓/可建仓 · 🟠 止盈观察 · 🟡 观望/暂停/溢价暂缓 · ⚪ 等待数据",
         "> 投入占比 = 已投入 ÷ 1万元本金；相对均价 =（净值 − 均价）/ 均价；"
-        "权益相对均价 ≥8% 时组合定投/建仓建议软降级。",
+        "权益相对均价 ≥8% 时组合定投/建仓建议软降级。"
+        "指数点位 = 券商 App 同口径实时报价（如沪深300 4582.68）；"
+        "买入均点 ≈ 昨收 ×（持仓均价 ÷ 净值）；相对均点按实时点位对比买入均点。",
         "",
         "#### 建仓进度",
         "",
@@ -421,6 +474,44 @@ def render(status: dict) -> str:
                 f"{shares_text} | {avg_text} | {nav_text} | {vs_text} |"
             )
 
+    index_level_rows = [
+        row
+        for row in status["rows"]
+        if row.get("fund_code") in EQUITY_COST_FUNDS
+        and (
+            isinstance(row.get("index_close"), (int, float))
+            or isinstance(row.get("avg_index_level"), (int, float))
+        )
+    ]
+    if index_level_rows:
+        lines.extend(
+            [
+                "",
+                "#### 指数点位（更直观）",
+                "",
+                "| 指数 | 今日点位 | 买入均点 | 相对均点 |",
+                "|---|---:|---:|---:|",
+            ]
+        )
+        for row in index_level_rows:
+            index_name = row.get("index_name") or short_fund_label(
+                row["name"], row["fund_code"]
+            )
+            close = row.get("index_close")
+            avg_lvl = row.get("avg_index_level")
+            vs = row.get("vs_index_pct")
+            if vs is None:
+                vs = row.get("vs_avg_pct")
+            date_bit = row.get("index_price_date")
+            name_text = str(index_name)
+            if date_bit:
+                name_text = f"{name_text}（{date_bit}）"
+            lines.append(
+                f"| {name_text} | {format_index_level(close)} | "
+                f"{format_index_level(avg_lvl)} | "
+                f"{f'**{vs:+.2f}%**' if isinstance(vs, (int, float)) else '-'} |"
+            )
+
     equity_notes = status.get("equity_notes") or []
     if equity_notes:
         lines.extend(["", "### 权益信号速览", ""])
@@ -436,10 +527,10 @@ def render(status: dict) -> str:
             "",
             "## 今日权益估值（4支）",
             "",
-            "> PE 看贵不贵；场外按确认净值成交。",
+            "> PE 看贵不贵；点位看高低；场外按确认净值成交。",
             "",
-            "| 标的 | 场外 | PE | 10年 | 1年 | 回撤 | 溢价 | 判断 |",
-            "|---|---|---:|---:|---:|---:|---:|---|",
+            "| 标的 | 场外 | 点位 | PE | 10年 | 1年 | 回撤 | 溢价 | 判断 |",
+            "|---|---|---:|---:|---:|---:|---:|---:|---|",
         ]
     )
     index_rows = (
@@ -458,6 +549,7 @@ def render(status: dict) -> str:
         percentile_1y = index.get("pe_percentile_1y")
         premium_pct = index.get("qdii_premium_pct")
         dd_pct = index.get("drawdown_from_52w_high_pct")
+        price_close = index.get("price_spot") or index.get("price_close")
         if name in ("沪深300", "中证500"):
             premium_text = "-"
         elif isinstance(premium_pct, (int, float)):
@@ -465,6 +557,9 @@ def render(status: dict) -> str:
         else:
             premium_text = "待核验"
         dd_text = f"{dd_pct:.1f}%" if isinstance(dd_pct, (int, float)) else "-"
+        level_text = format_index_level(
+            float(price_close) if isinstance(price_close, (int, float)) else None
+        )
         code, weight = INDEX_WEIGHT[name]
         held = float(holdings_cost.get(code, 0) or 0)
         action, _reason = resolve_action(
@@ -506,8 +601,8 @@ def render(status: dict) -> str:
         elif action == "unknown":
             decision = "未核验" if index.get("verified") is not True else "数据不足"
         lines.append(
-            f"| {short_name} | `{fund_code}` | {pe_text} | {p10} | {p1} | "
-            f"{dd_text} | {premium_text} | {decision} |"
+            f"| {short_name} | `{fund_code}` | {level_text} | {pe_text} | {p10} | "
+            f"{p1} | {dd_text} | {premium_text} | {decision} |"
         )
     lines.extend(
         [
