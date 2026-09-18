@@ -3,21 +3,21 @@
     "短债": {
       "multiplier": 1.0,
       "monthly": 186.0,
-      "weekly": 93.0,
+      "weekly": 186.0,
       "paused": false,
       "action": "buy"
     },
     "沪深300": {
       "multiplier": 1.0,
       "monthly": 81.0,
-      "weekly": 40.5,
+      "weekly": 81.0,
       "paused": false,
       "action": "buy"
     },
     "中证500": {
       "multiplier": 0.7,
       "monthly": 23.1,
-      "weekly": 11.55,
+      "weekly": 23.1,
       "paused": false,
       "action": "seventy"
     },
@@ -76,5 +76,5 @@
     "emails_sent": 6,
     "planned_monthly": 290.1
   },
-  "updated_at": "2026-09-17T17:20:58+08:00"
+  "updated_at": "2026-09-18T16:55:58+08:00"
 }
