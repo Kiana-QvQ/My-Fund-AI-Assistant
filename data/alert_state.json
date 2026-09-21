@@ -15,11 +15,11 @@
       "action": "buy"
     },
     "中证500": {
-      "multiplier": 0.7,
-      "monthly": 23.1,
-      "weekly": 23.1,
+      "multiplier": 0.5,
+      "monthly": 16.5,
+      "weekly": 16.5,
       "paused": false,
-      "action": "seventy"
+      "action": "half"
     },
     "标普500": {
       "multiplier": 0.0,
@@ -44,7 +44,7 @@
       "state": "不可买"
     },
     "标普500": {
-      "state": "QDII溢价阻断"
+      "state": "数据源失败"
     }
   },
   "build_machines": {
@@ -63,18 +63,18 @@
       "last_notified_at": "2026-07-21T10:41:30+08:00"
     },
     "标普500": {
-      "current_state": "QDII溢价阻断",
+      "current_state": "数据源失败",
       "candidate_state": null,
       "candidate_count": 0,
-      "last_notified_state": "QDII溢价阻断",
-      "last_notified_at": "2026-07-18T12:24:40+08:00"
+      "last_notified_state": "数据源失败",
+      "last_notified_at": "2026-09-21T17:47:54+08:00"
     }
   },
   "dca_month": {
     "year_month": "2026-09",
     "spent": 0.0,
     "emails_sent": 6,
-    "planned_monthly": 290.1
+    "planned_monthly": 283.5
   },
-  "updated_at": "2026-09-18T16:55:58+08:00"
+  "updated_at": "2026-09-21T17:47:58+08:00"
 }
