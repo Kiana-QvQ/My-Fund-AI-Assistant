@@ -2,10 +2,10 @@
   "dca": {
     "短债": {
       "multiplier": 1.0,
-      "monthly": 186.0,
-      "weekly": 186.0,
-      "paused": false,
-      "action": "buy"
+      "monthly": 0.0,
+      "weekly": 0.0,
+      "paused": true,
+      "action": "purchase_block"
     },
     "沪深300": {
       "multiplier": 1.0,
@@ -76,5 +76,5 @@
     "emails_sent": 6,
     "planned_monthly": 283.5
   },
-  "updated_at": "2026-09-22T17:12:24+08:00"
+  "updated_at": "2026-09-23T17:12:42+08:00"
 }
