@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-09-23",
+  "as_of": "2026-09-28",
   "base_currency": "CNY",
   "building_principal": 10000.0,
   "initial_build_percent": 20.0,
@@ -23,19 +23,19 @@
       "note": "更正：中证500误记多10元冲回",
       "avg_cost": 2.109402,
       "shares_source": "sum_buy_estimated",
-      "avg_cost_updated_at": "2026-09-23T09:12:40"
+      "avg_cost_updated_at": "2026-09-28T10:44:23"
     },
     {
       "fund_code": "016452",
       "name": "南方纳斯达克100指数发起(QDII)A",
-      "shares": 184.2866,
-      "cost_basis": 420.0,
+      "shares": 192.7826,
+      "cost_basis": 440.0,
       "target_percent": 3.0,
       "asset_class": "美股QDII",
       "note": "纳斯达克100交易日定投",
-      "avg_cost": 2.279059,
+      "avg_cost": 2.282364,
       "shares_source": "sum_buy_estimated",
-      "avg_cost_updated_at": "2026-09-23T09:12:40"
+      "avg_cost_updated_at": "2026-09-28T10:44:23"
     },
     {
       "fund_code": "460300",
@@ -47,7 +47,7 @@
       "note": "沪深300建仓",
       "avg_cost": 1.183731,
       "shares_source": "sum_buy_estimated",
-      "avg_cost_updated_at": "2026-09-23T09:12:40"
+      "avg_cost_updated_at": "2026-09-28T10:44:23"
     }
   ],
   "transactions": [
@@ -986,6 +986,34 @@
       "cost_delta": 10.0,
       "shares": 4.2452,
       "nav": 2.3528,
+      "note": "纳斯达克100交易日定投",
+      "purpose": "dca"
+    },
+    {
+      "transaction_id": "7fd60e81-36fa-4d52-a63f-c718d5c3f280",
+      "idempotency_key": "1075ea4803545cf67f25a480",
+      "trade_date": "2026-09-24",
+      "time": "2026-09-24T12:00:00+08:00",
+      "side": "buy",
+      "fund_code": "016452",
+      "amount": 10.0,
+      "cost_delta": 10.0,
+      "shares": 4.248,
+      "nav": 2.3512,
+      "note": "纳斯达克100交易日定投",
+      "purpose": "dca"
+    },
+    {
+      "transaction_id": "ee4fbecc-de49-4306-9bd4-eccff6e461e1",
+      "idempotency_key": "1f456d47ba725f68440ef1e8",
+      "trade_date": "2026-09-28",
+      "time": "2026-09-28T18:44:22+08:00",
+      "side": "buy",
+      "fund_code": "016452",
+      "amount": 10.0,
+      "cost_delta": 10.0,
+      "shares": 4.248,
+      "nav": 2.3512,
       "note": "纳斯达克100交易日定投",
       "purpose": "dca"
     }
