@@ -34,7 +34,7 @@
       "note": "更正：中证500误记多10元冲回",
       "avg_cost": 2.108793,
       "shares_source": "sum_buy_estimated",
-      "avg_cost_updated_at": "2026-10-15T16:14:02",
+      "avg_cost_updated_at": "2026-10-15T09:04:57",
       "broker_snapshot": {
         "as_of": "2026-10-15",
         "source": "招商银行App截图",
@@ -55,7 +55,7 @@
       "note": "招行App每交易日定投 10 元（非 2026-10-15 才开始）",
       "avg_cost": 2.029062,
       "shares_source": "sum_buy_estimated",
-      "avg_cost_updated_at": "2026-10-15T16:14:02",
+      "avg_cost_updated_at": "2026-10-15T09:04:57",
       "broker_snapshot": {
         "as_of": "2026-10-15",
         "source": "招商银行App截图",
@@ -76,7 +76,7 @@
       "note": "沪深300建仓",
       "avg_cost": 1.161254,
       "shares_source": "sum_buy_estimated",
-      "avg_cost_updated_at": "2026-10-15T16:14:02",
+      "avg_cost_updated_at": "2026-10-15T09:04:57",
       "broker_snapshot": {
         "as_of": "2026-10-15",
         "source": "招商银行App截图",

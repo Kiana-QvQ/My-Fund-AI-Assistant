@@ -2,22 +2,22 @@
   "dca": {
     "短债": {
       "multiplier": 1.0,
-      "monthly": 253.18,
-      "weekly": 84.39,
+      "monthly": 0.0,
+      "weekly": 0.0,
       "paused": false,
-      "action": "buy"
+      "action": "reference"
     },
     "沪深300": {
       "multiplier": 1.5,
-      "monthly": 165.38,
-      "weekly": 55.13,
+      "monthly": 0.0,
+      "weekly": 0.0,
       "paused": false,
       "action": "boost_150"
     },
     "中证500": {
       "multiplier": 0.7,
-      "monthly": 31.44,
-      "weekly": 10.48,
+      "monthly": 0.0,
+      "weekly": 0.0,
       "paused": false,
       "action": "seventy"
     },
@@ -34,6 +34,32 @@
       "weekly": 0.0,
       "paused": true,
       "action": "reference"
+    }
+  },
+  "personal_dca": {
+    "纳斯达克100": {
+      "verdict": "pause",
+      "verdict_label": "建议暂停每日定投",
+      "multiplier": 0.0,
+      "daily_amount": 10.0
+    },
+    "中证500": {
+      "verdict": "wait",
+      "verdict_label": "建议维持不加码",
+      "multiplier": 0.7,
+      "daily_amount": 5.0
+    },
+    "短债": {
+      "verdict": "maintain",
+      "verdict_label": "维持每日定投",
+      "multiplier": 1.0,
+      "daily_amount": 5.0
+    },
+    "沪深300": {
+      "verdict": "boost",
+      "verdict_label": "可考虑加码",
+      "multiplier": 1.5,
+      "daily_amount": 5.0
     }
   },
   "build": {
@@ -73,8 +99,8 @@
   "dca_month": {
     "year_month": "2026-10",
     "spent": 0.0,
-    "emails_sent": 3,
-    "planned_monthly": 450.0
+    "emails_sent": 5,
+    "planned_monthly": 0.0
   },
-  "updated_at": "2026-10-14T17:27:40+08:00"
+  "updated_at": "2026-10-15T17:05:06+08:00"
 }

@@ -1,7 +1,7 @@
 {
   "as_of": "2026-10-15",
-  "generated_at": "2026-10-15T16:14:02+08:00",
-  "updated_at_display": "2026-10-15 16:14:02 CST",
+  "generated_at": "2026-10-15T17:04:57+08:00",
+  "updated_at_display": "2026-10-15 17:04:57 CST",
   "total_cost_basis": 4415.0,
   "building_principal": 10000.0,
   "initial_build_percent": 20.0,
@@ -11,7 +11,7 @@
   "equity_notes": [
     "沪深300：定投150%，1年分位7.7%，52周回撤16.6%",
     "中证500：定投70%，1年分位7.7%，52周回撤22.7%",
-    "标普500：溢价过高暂缓，1年分位66.7%",
+    "标普500：溢价过高暂缓，1年分位66.7%，52周回撤1.3%",
     "纳斯达克100：每日自动定投·仅参考，1年分位4.0%"
   ],
   "rows": [
@@ -82,7 +82,7 @@
       "decision": "已达到目标",
       "reason": "已达到目标金额 ¥300.00，不建议继续追加；相对持仓均价 +15.93%（均价 2.0291 / 净值 2.3522）",
       "nav": 2.3522,
-      "nav_date": "2026-10-13"
+      "nav_date": "10-13"
     },
     {
       "fund_code": "460300",
@@ -298,23 +298,25 @@
       "history_source": "https://www.multpl.com/s-p-500-pe-ratio/table/by-month",
       "history_points": 120,
       "history_points_1y": 12,
-      "history_from_cache": false,
+      "history_from_cache": true,
       "current_timestamp": "4:00 PM EDT, Wed Oct 14",
-      "fetched_at": "2026-10-15T16:06:33+08:00",
-      "reason": "Multpl 指数PE=26.34，近10年分位 69.17% （样本 120），近1年分位 66.67%",
+      "fetched_at": "2026-10-15T17:04:39+08:00",
+      "reason": "Multpl 指数PE=26.34，近10年分位 69.17% （样本 120），近1年分位 66.67%（月度序列来自缓存）",
       "validation_errors": [],
       "qdii_premium": null,
       "qdii_premium_pct": null,
       "qdii_etf": null,
       "qdii_premium_status": "error",
-      "qdii_premium_reason": "('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))",
-      "drawdown_from_52w_high": null,
-      "drawdown_from_52w_high_pct": null,
-      "drawdown_status": "fetch_failed",
-      "drawdown_reason": "akshare: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))；yfinance: Too Many Requests. Rate limited. Try after a while."
+      "qdii_premium_reason": "502 Server Error: Bad Gateway for url: https://push2delay.eastmoney.com/api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&wbp2u=%7C0%7C0%7C0%7Cweb&fid=f12&fs=b%3AMK0021%2Cb%3AMK0022%2Cb%3AMK0023%2Cb%3AMK0024%2Cb%3AMK0827&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf22%2Cf11%2Cf30%2Cf31%2Cf32%2Cf33%2Cf34%2Cf35%2Cf38%2Cf62%2Cf63%2Cf64%2Cf65%2Cf66%2Cf69%2Cf72%2Cf75%2Cf78%2Cf81%2Cf84%2Cf87%2Cf115%2Cf124%2Cf128%2Cf136%2Cf152%2Cf184%2Cf297%2Cf402%2Cf441",
+      "drawdown_from_52w_high": 0.0128,
+      "drawdown_from_52w_high_pct": 1.28,
+      "price_close": 7718.9399,
+      "price_high_52w": 7818.9302,
+      "drawdown_source": "yfinance:^GSPC",
+      "drawdown_status": "ok"
     },
     "纳斯达克100": {
-      "pe_ttm": 29.91,
+      "pe_ttm": 29.82,
       "pe_percentile": null,
       "pe_percentile_1y": 4.0,
       "verified": false,
@@ -327,7 +329,7 @@
       "source": "stockanalysis.com/etf/qqq PE Ratio",
       "history_points": 25,
       "history_points_1y": 25,
-      "reason": "参考：QQQ PE=29.91，近10年无统计分位（样本 25<30），近1年参考分位 4.00%（样本 25）；ETF估值≠指数PE，未核验，禁止自动买入",
+      "reason": "参考：QQQ PE=29.82，近10年无统计分位（样本 25<30），近1年参考分位 4.00%（样本 25）；ETF估值≠指数PE，未核验，禁止自动买入",
       "validation_errors": [
         "纳斯达克100仅展示参考估值，不参与自动买卖"
       ],
@@ -335,7 +337,7 @@
       "qdii_premium_pct": null,
       "qdii_etf": null,
       "qdii_premium_status": "error",
-      "qdii_premium_reason": "('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))",
+      "qdii_premium_reason": "502 Server Error: Bad Gateway for url: https://push2delay.eastmoney.com/api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&wbp2u=%7C0%7C0%7C0%7Cweb&fid=f12&fs=b%3AMK0021%2Cb%3AMK0022%2Cb%3AMK0023%2Cb%3AMK0024%2Cb%3AMK0827&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf22%2Cf11%2Cf30%2Cf31%2Cf32%2Cf33%2Cf34%2Cf35%2Cf38%2Cf62%2Cf63%2Cf64%2Cf65%2Cf66%2Cf69%2Cf72%2Cf75%2Cf78%2Cf81%2Cf84%2Cf87%2Cf115%2Cf124%2Cf128%2Cf136%2Cf152%2Cf184%2Cf297%2Cf402%2Cf441",
       "drawdown_from_52w_high": null,
       "drawdown_from_52w_high_pct": null,
       "drawdown_status": "skipped",
@@ -348,5 +350,5 @@
     "016452": 460.0,
     "460300": 1025.0
   },
-  "data_status": "market_snapshot.json 已加载；标普PE已核验（Multpl，2026-10-14）；纳指参考PE 29.91（QQQ，不交易）"
+  "data_status": "market_snapshot.json 已加载；标普PE已核验（Multpl，2026-10-14）；纳指参考PE 29.82（QQQ，不交易）"
 }
