@@ -1,4 +1,14 @@
-"""A-share trading calendar helpers (excludes weekends and official holidays)."""
+"""A-share trading calendar helpers (excludes weekends and official holidays).
+
+交易日规则（详见 `a_share_holidays.py`）
+---------------------------------------
+- **A 股交易日**：周一至周五，剔除法定节假日与交易所公告休市日。
+  优先使用 AKShare `tool_trade_date_hist_sina`（新浪财经，含交易所临时调整）；
+  不可用时回退到 `a_share_holidays.py` 内置的官方休市表；两者都没有就
+  **fail-closed 跳过**，绝不把节假日当交易日。
+- **场外基金扣款**：非交易日顺延至下一开放日；15:00 前提交按当日净值确认。
+- **QDII**：申购截止按 A 股交易日 15:00，确认净值另受境外市场估值日影响。
+"""
 
 from __future__ import annotations
 
@@ -12,6 +22,16 @@ from pathlib import Path
 
 import akshare as ak
 import pandas as pd
+
+_SCRIPTS = Path(__file__).resolve().parent
+if str(_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS))
+
+from a_share_holidays import (  # noqa: E402
+    offline_a_share_trading_day,
+    trading_day_rule,
+    trading_day_rule_text,
+)
 
 CST = timezone(timedelta(hours=8))
 DEFAULT_RETRIES = 3
@@ -52,6 +72,40 @@ def parse_day(day: date | str | None = None) -> date:
     if isinstance(day, str):
         return datetime.strptime(day[:10], "%Y-%m-%d").date()
     return day
+
+
+def is_trading_day_for(market: str | None, day: date | str | None = None) -> bool:
+    """Trading-day verdict for a schedule `market` ('a_share' / 'qdii_us').
+
+    Both markets deduct on A-share trading days (场外基金开放日口径). AKShare's
+    exchange calendar wins; the built-in official holiday table is the offline
+    fallback; if neither can answer, the day is skipped (fail-closed) — a
+    skipped day is re-evaluated on the next run, so nothing is lost.
+    """
+    target = parse_day(day)
+    # Normalises/validates the market key; unknown markets fall back to A-share.
+    trading_day_rule(market)
+    try:
+        return is_a_share_trading_day(target)
+    except Exception as exc:  # noqa: BLE001 — network / dependency drift
+        offline = offline_a_share_trading_day(target)
+        if offline is None:
+            print(
+                f"警告: 交易日历不可用（{type(exc).__name__}），且无 "
+                f"{target.year} 年内置休市表；{target.isoformat()} 按非交易日跳过",
+                file=sys.stderr,
+            )
+            return False
+        print(
+            f"警告: 交易日历不可用（{type(exc).__name__}），"
+            f"按 {target.year} 年官方休市表回退判定 {target.isoformat()}",
+            file=sys.stderr,
+        )
+        return bool(offline)
+
+
+def resolve_trading_day_rule(market: str | None = None) -> str:
+    return trading_day_rule_text(market)
 
 
 def next_a_share_trading_day(day: date | str | None = None) -> date:

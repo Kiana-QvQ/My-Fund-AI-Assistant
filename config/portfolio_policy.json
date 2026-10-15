@@ -13,8 +13,11 @@
     "monthly_base": 300,
     "monthly_cap": 1000,
     "full_cap_multiplier": 3.0,
-    "schedule": "thursday_09_cst",
+    "schedule": "daily_trading_day",
     "allocate_by": "target_allocation",
+    "portfolio_weekly_enabled": false,
+    "portfolio_weekly_note": "自 2026-10-15 起，四只持仓标的全部改为招商银行 App「每交易日」自动定投，组合周度预算不再生成申购清单。估值档位（a_share_tiers / us_tiers）保留，用于对每日自动定投给出「建议维持 / 建议暂停 / 建议恢复」的监控结论；allocate_dca_plan 的 weekly / monthly 恒为 0。",
+    "reconcile_note": "2026-10-15 已按招行 App 截图对账：四只成本 = 市值 − 持仓收益 = 2005/1025/925/460，合计 ¥4,415.00（含当日 25 元）。对账基线是 origin/main 账本（截至 10-14 合计 ¥4,250，工作流已按交易日自动补记纳指定投）。净调整 +¥140：460300 补 +¥200（未入账建仓）、016452 冲回 −¥60（自动记账按 A 股日历补了 43 笔，App 口径只对应 38 笔）；012773 与 160119 本来就对得上。冲回记为 side=adjust 的流水，不会被 backfill 算份额、也不会计入定投。每条 schedule 的 reconciled_through = 该日及以前不自动补记，effective_from = 自动记账起始日。",
     "sleeves": [
       {
         "name": "短债",
@@ -86,19 +89,81 @@
       "note": "每周四固定1封周报；事件信仅档位实质变化时发。max_dca_emails_per_month 含周报+定投事件（不含建仓）。设为4≈只保留周报；设为0关闭定投邮件。"
     },
     "personal_schedules": {
+      "012773": {
+        "name": "短债",
+        "fund_code": "012773",
+        "fund_name": "嘉实超短债债券A",
+        "broker": "招商银行App",
+        "schedule": "trading_day",
+        "market": "a_share",
+        "valuation": "none",
+        "index": null,
+        "trading_days_only": true,
+        "daily_amount": 5,
+        "monthly_stop_amount": null,
+        "effective_from": "2026-10-15",
+        "reconciled_through": "2026-10-14",
+        "enabled": true,
+        "auto_ledger": true,
+        "note": "招行App「每交易日」自动定投 5 元，自 2026-10-15 起新设置；非交易日顺延；不设月终止金额；不计入组合周度预算。短债不看 PE/回撤，只按交易日扣款。"
+      },
+      "460300": {
+        "name": "沪深300",
+        "fund_code": "460300",
+        "fund_name": "华泰柏瑞沪深300ETF联接A",
+        "broker": "招商银行App",
+        "schedule": "trading_day",
+        "market": "a_share",
+        "valuation": "pe_10y",
+        "index": "沪深300",
+        "trading_days_only": true,
+        "daily_amount": 5,
+        "monthly_stop_amount": null,
+        "effective_from": "2026-10-15",
+        "reconciled_through": "2026-10-14",
+        "enabled": true,
+        "auto_ledger": true,
+        "note": "招行App「每交易日」自动定投 5 元，自 2026-10-15 起新设置；非交易日顺延；不设月终止金额；不计入组合周度预算。"
+      },
+      "160119": {
+        "name": "中证500",
+        "fund_code": "160119",
+        "fund_name": "南方中证500ETF联接(LOF)A",
+        "broker": "招商银行App",
+        "schedule": "trading_day",
+        "market": "a_share",
+        "valuation": "pe_10y",
+        "index": "中证500",
+        "trading_days_only": true,
+        "daily_amount": 5,
+        "monthly_stop_amount": null,
+        "effective_from": "2026-10-15",
+        "reconciled_through": "2026-10-14",
+        "enabled": true,
+        "auto_ledger": true,
+        "note": "招行App「每交易日」自动定投 5 元，自 2026-10-15 起新设置；非交易日顺延；不设月终止金额；不计入组合周度预算。"
+      },
       "016452": {
         "name": "纳斯达克100",
         "fund_code": "016452",
+        "fund_name": "南方纳斯达克100指数发起(QDII)A",
+        "broker": "招商银行App",
         "schedule": "trading_day",
+        "market": "qdii_us",
+        "valuation": "pe_10y",
+        "index": "纳斯达克100",
         "trading_days_only": true,
         "daily_amount": 10,
-        "monthly_stop_amount": 215,
+        "monthly_stop_amount": null,
+        "effective_from": "2026-10-15",
+        "reconciled_through": "2026-10-14",
         "enabled": true,
         "auto_ledger": true,
-        "note": "仅交易日执行；当月累计达到215元后停止；工作流自动写入账本（sync_personal_dca）"
+        "note": "招行App「每交易日」自动定投 10 元，非 2026-10-15 才开始（此前已在扣款，2026-10-14 及以前已按截图对账）；场外 QDII 申购截止仍按 A 股交易日 15:00，境外休市可能顺延；不设月终止金额；不计入组合周度预算。"
       }
     },
-    "note": "组合月定投总额基础300、封顶1000，按目标仓位分给5支；纳斯达克100另按个人交易日定投10元、当月终止金额215元执行，不计入组合周度预算，并由交易日工作流自动补记账本。权益本周金额<min_equity_weekly_amount并入短债。可买须申购开放/限大额且金额≤日限额、≥购买起点。A股/美股同一套10年PE档。周四约12:00周报（避开早高峰 cron）。"
+    "personal_schedules_note": "四只持仓标的均为招行 App「每交易日」自动定投：短债 / 沪深300 / 中证500 各 5 元（2026-10-15 起新设置）、纳指100 10 元（此前已在扣款），合计 25 元/交易日。均不设月终止金额、均不计入组合周度预算。monthly_stop_amount 为 null 表示当月不限额度（按交易日一直扣）。reconciled_through = 该日及以前已按招行 App 截图人工对账、不再自动补记；effective_from = 自动记账起始日（取 reconciled_through 的次日）。系统只负责记账与估值监控（建议维持 / 建议暂停 / 建议恢复）。",
+    "note": "四只持仓标的均为招商银行 App 每交易日自动定投（5/5/5/10 元，无月终止金额），由交易日工作流自动补记账本；组合周度预算（基础300/封顶1000）自 2026-10-15 起不再生成申购清单，仅保留估值档位作为每日定投的暂停/恢复监控。可买须申购开放/限大额且金额≤日限额、≥购买起点。A股/美股同一套10年PE档。周四约12:00发「每日定投监控」周报（避开早高峰 cron）。"
   },
   "rules": {
     "rebalance_period": "annual",
@@ -114,9 +179,9 @@
       "premium_full_pct": 15.0,
       "min_scale": 0.5,
       "exclude_personal_dca": true,
-      "note": "现价相对持仓均价≥8%开始软降组合定投/建仓建议金额，15%降至50%；个人纳指日定投不受影响。仅展示+软约束，不替代估值主信号。"
+      "note": "现价相对持仓均价≥8%开始软降建仓建议金额，15%降至50%；四只每日自动定投（012773/460300/160119/016452）不受影响，仍按交易日扣款。仅展示+软约束，不替代估值主信号。"
     },
-    "note": "QDII溢价：>2%暂停；≤1%才恢复；1%<溢价≤2%继续等待。定投与建仓信号不合并。权益持仓均价用于展示与软降级。"
+    "note": "QDII溢价：>2%建议暂停每日定投；≤1%才建议恢复；1%<溢价≤2%继续观望。组合周度预算自 2026-10-15 起不再生成申购清单；建仓信号仍独立。权益持仓均价用于展示与软降级（不影响每日自动定投）。"
   },
   "bootstrap": {
     "enabled": true,

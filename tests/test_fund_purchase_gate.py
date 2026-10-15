@@ -23,6 +23,16 @@ from policy_rules import load_policy  # noqa: E402
 import send_trade_alert_email as email_mod  # noqa: E402
 
 
+def policy_with_weekly_budget(**dca_overrides) -> dict:
+    """Opt back into the legacy portfolio weekly budget for budget-maths tests."""
+    policy = load_policy()
+    dca = dict(policy.get("dca") or {})
+    dca["portfolio_weekly_enabled"] = True
+    dca.update(dca_overrides)
+    policy["dca"] = dca
+    return policy
+
+
 class PurchaseGateTests(unittest.TestCase):
     def test_suspend_blocks(self) -> None:
         ok, reason = purchase_gate(
@@ -56,7 +66,7 @@ class PurchaseGateTests(unittest.TestCase):
 
 class DcaPurchaseGateIntegrationTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.policy = load_policy()
+        self.policy = policy_with_weekly_budget()
 
     def test_spx_suspend_blocks_even_if_premium_ok(self) -> None:
         snap = {

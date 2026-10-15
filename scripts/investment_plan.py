@@ -1,11 +1,16 @@
-"""DCA (weekly), personal schedules, and build (event) plan helpers.
+"""Daily auto-invest monitoring, personal schedules, and build (event) helpers.
 
-Portfolio budget model:
-- monthly_base / monthly_cap apply to the **whole plan** (default 300 / 1000)
-- Split across 5 sleeves by target_allocation weights
-- Paused / excluded equity weight flows to 短债
-- Weekly size = remaining month budget ÷ remaining Thursdays (enforces month cap)
-- Personal schedules are tracked separately from the portfolio budget
+Current model (2026-10-15+):
+- All four held funds run on 招商银行 App "每交易日" auto-invest
+  (短债/沪深300/中证500 ¥5, 纳指100 ¥10) with **no monthly stop amount**.
+- Those schedules live in ``dca.personal_schedules`` and never consume the
+  portfolio budget; the system only ledgers them and reports a
+  维持 / 建议暂停 / 可考虑加码 verdict (``personal_dca_monitor``).
+- The legacy portfolio weekly budget (monthly_base / monthly_cap split across
+  5 sleeves by target_allocation) is **disabled** by
+  ``dca.portfolio_weekly_enabled: false``. Its maths are kept and still unit
+  tested, but ``allocate_dca_plan`` forces base/cap to 0 so it emits tier
+  signals instead of buy amounts.
 """
 
 from __future__ import annotations
@@ -55,6 +60,40 @@ def personal_dca_fund_codes(policy: dict | None = None) -> set[str]:
     return set(personal_dca_schedules(policy))
 
 
+def personal_dca_schedule_for_index(
+    name: str,
+    policy: dict | None = None,
+) -> tuple[str, dict] | None:
+    """Find the personal schedule that tracks an index (e.g. 纳斯达克100)."""
+    target = str(name)
+    for code, schedule in personal_dca_schedules(policy).items():
+        if str(schedule.get("index") or "") == target:
+            return code, schedule
+        if str(schedule.get("name") or "") == target:
+            return code, schedule
+    return None
+
+
+def parse_monthly_stop_amount(schedule: dict) -> float | None:
+    """Monthly stop amount for a personal schedule.
+
+    ``None`` means **no monthly cap** — the broker keeps buying every trading
+    day. Accepted spellings that mean "unlimited": the key is absent, the value
+    is ``null``, or the value is ``0`` / not a positive number.
+    """
+    if "monthly_stop_amount" in schedule:
+        raw = schedule.get("monthly_stop_amount")
+    else:
+        raw = schedule.get("monthly_cap")
+    if raw is None:
+        return None
+    try:
+        parsed = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
 def personal_dca_line(
     fund_code: str,
     *,
@@ -75,51 +114,55 @@ def personal_dca_line(
             "fund_code": code,
             "enabled": False,
             "daily_amount": 0.0,
-            "monthly_stop_amount": 0.0,
+            "monthly_stop_amount": None,
             "month_spent": round(max(0.0, float(month_spent or 0.0)), 2),
-            "month_remaining": 0.0,
+            "month_remaining": None,
             "today_amount": 0.0,
             "executable": False,
             "reason": "未配置个人定投计划",
         }
 
     daily = max(0.0, float(schedule.get("daily_amount") or 0.0))
-    stop_amount = max(
-        0.0,
-        float(
-            schedule.get(
-                "monthly_stop_amount",
-                schedule.get("monthly_cap", 0.0),
-            )
-            or 0.0
-        ),
-    )
+    stop_amount = parse_monthly_stop_amount(schedule)
     spent = max(0.0, float(month_spent or 0.0))
-    remaining = round(max(0.0, stop_amount - spent), 2)
+    unlimited = stop_amount is None
+    remaining = None if unlimited else round(max(0.0, stop_amount - spent), 2)
+    cap_left = True if unlimited else bool(remaining and remaining > 0)
     enabled = bool(schedule.get("enabled", True))
     trading_days_only = bool(schedule.get("trading_days_only", True))
-    can_run = enabled and (is_trading_day or not trading_days_only) and remaining > 0
-    today_amount = round(min(daily, remaining), 2) if can_run else 0.0
+    can_run = enabled and (is_trading_day or not trading_days_only) and cap_left
+    if not can_run:
+        today_amount = 0.0
+    elif unlimited:
+        today_amount = round(daily, 2)
+    else:
+        today_amount = round(min(daily, float(remaining or 0.0)), 2)
 
     if not enabled:
         reason = "个人定投已关闭"
     elif trading_days_only and not is_trading_day:
-        reason = "今天非交易日，跳过本次定投"
-    elif remaining <= 0:
-        reason = f"本月已达到终止金额 {stop_amount:.0f} 元"
+        reason = "今天非交易日，跳过本次定投（定投扣款顺延至下一交易日）"
+    elif not cap_left:
+        reason = f"本月已达到终止金额 {float(stop_amount or 0):.0f} 元"
+    elif unlimited:
+        reason = f"每交易日定投 {daily:.0f} 元；未设月终止金额"
     else:
         reason = (
-            f"交易日定投 {daily:.0f} 元；本月累计达到 {stop_amount:.0f} 元后停止"
+            f"交易日定投 {daily:.0f} 元；本月累计达到 {float(stop_amount or 0):.0f} 元后停止"
         )
 
     return {
         "name": schedule.get("name") or code,
         "fund_code": code,
+        "fund_name": schedule.get("fund_name"),
+        "broker": schedule.get("broker"),
+        "market": schedule.get("market") or "a_share",
         "schedule": schedule.get("schedule") or "trading_day",
         "trading_days_only": trading_days_only,
         "enabled": enabled,
         "daily_amount": daily,
         "monthly_stop_amount": stop_amount,
+        "unlimited_monthly": unlimited,
         "month_spent": round(spent, 2),
         "month_remaining": remaining,
         "today_amount": today_amount,
@@ -131,29 +174,182 @@ def personal_dca_line(
 def personal_dca_summary_line(policy: dict | None = None) -> str:
     schedules = personal_dca_schedules(policy)
     if not schedules:
-        return "个人定投：未配置独立计划"
+        return "每日自动定投：未配置"
     parts = []
     for schedule in schedules.values():
         if not schedule.get("enabled", True):
             continue
-        cadence = (
-            "交易日"
-            if schedule.get("trading_days_only", True)
-            else "每日"
-        )
+        cadence = "每交易日" if schedule.get("trading_days_only", True) else "每日"
         daily = float(schedule.get("daily_amount") or 0)
-        stop_amount = float(
-            schedule.get(
-                "monthly_stop_amount",
-                schedule.get("monthly_cap", 0),
-            )
-            or 0
-        )
+        stop_amount = parse_monthly_stop_amount(schedule)
+        stop_text = "不限月额度" if stop_amount is None else f"月终止{stop_amount:.0f}元"
         parts.append(
-            f"{schedule.get('name') or schedule.get('fund_code')} {cadence}{daily:.0f}元、"
-            f"月终止{stop_amount:.0f}元"
+            f"{schedule.get('name') or schedule.get('fund_code')} {cadence}{daily:.0f}元（{stop_text}）"
         )
-    return "个人定投：" + "；".join(parts) + "（不计入组合周度预算）"
+    return "每日自动定投：" + "；".join(parts) + "（不计入组合周度预算）"
+
+
+PERSONAL_VERDICT_LABEL = {
+    "maintain": "维持每日定投",
+    "boost": "可考虑加码",
+    "pause": "建议暂停每日定投",
+    "wait": "建议维持不加码",
+    "unknown": "数据不足·维持",
+    "disabled": "已关闭",
+}
+
+
+def personal_dca_monitor(
+    fund_code: str,
+    *,
+    percentile_10y: float | None = None,
+    premium: float | None = None,
+    drawdown_from_52w_high: float | None = None,
+    is_trading_day: bool = True,
+    month_spent: float = 0.0,
+    policy: dict | None = None,
+) -> dict:
+    """Advisory verdict for the bank's daily auto-invest on one fund.
+
+    The bank already debits every trading day, so this never sizes an order — it
+    answers 维持 / 可考虑加码 / 建议暂停 using the same 10-year PE ladder and QDII
+    premium hysteresis as the rest of the system.
+
+    Unlike the portfolio planner, the "excluded index" rule does not apply here:
+    纳斯达克100 has no portfolio sleeve, but it does have a personal schedule.
+    """
+    policy = policy or load_policy()
+    cfg = dca_config(policy)
+    rules = policy.get("rules") or {}
+    schedule = personal_dca_schedule(fund_code, policy) or {}
+    line = personal_dca_line(
+        fund_code,
+        month_spent=month_spent,
+        is_trading_day=is_trading_day,
+        policy=policy,
+    )
+    index_name = schedule.get("index")
+    valuation = str(schedule.get("valuation") or "none")
+    market = str(schedule.get("market") or "a_share")
+    daily = float(line.get("daily_amount") or 0.0)
+
+    out = dict(line)
+    out["index"] = index_name
+    out["valuation"] = valuation
+    out["multiplier"] = None
+    out["verdict"] = "unknown"
+    out["verdict_label"] = PERSONAL_VERDICT_LABEL["unknown"]
+    out["verdict_reason"] = (
+        f"缺少估值数据，无法判断档位；建议维持每日 {daily:.0f} 元"
+    )
+
+    if not line.get("enabled", True):
+        out["verdict"] = "disabled"
+        out["verdict_label"] = PERSONAL_VERDICT_LABEL["disabled"]
+        out["verdict_reason"] = "政策已关闭该定投计划"
+        return out
+
+    # 短债（valuation=none）：不看 PE / 回撤，只按交易日扣款。
+    if valuation == "none" or not index_name:
+        out["verdict"] = "maintain"
+        out["multiplier"] = 1.0
+        out["verdict_reason"] = f"短债不看 PE/回撤；每交易日 {daily:.0f} 元照常扣款"
+        out["verdict_label"] = PERSONAL_VERDICT_LABEL["maintain"]
+        return out
+
+    # QDII 溢价滞回（fail-closed）：>2% 建议暂停；1%~2% 观望；≤1% 恢复。
+    if market == "qdii_us":
+        premium_pause = float(rules.get("qdii_premium_pause_above", 0.02))
+        premium_resume = float(rules.get("qdii_premium_resume_below", 0.01))
+        if premium is None:
+            out["verdict"] = "pause"
+            out["multiplier"] = 0.0
+            out["verdict_reason"] = (
+                f"QDII溢价数据缺失，建议暂停每日 {daily:.0f} 元（fail-closed）"
+            )
+            out["verdict_label"] = PERSONAL_VERDICT_LABEL["pause"]
+            return out
+        if premium > premium_pause:
+            out["verdict"] = "pause"
+            out["multiplier"] = 0.0
+            out["verdict_reason"] = (
+                f"QDII溢价 {premium * 100:.2f}% > {premium_pause * 100:.0f}%，"
+                f"建议暂停每日 {daily:.0f} 元"
+            )
+            out["verdict_label"] = PERSONAL_VERDICT_LABEL["pause"]
+            return out
+        if premium > premium_resume:
+            out["verdict"] = "wait"
+            out["multiplier"] = 0.0
+            out["verdict_reason"] = (
+                f"QDII溢价 {premium * 100:.2f}% 仍高于 "
+                f"{premium_resume * 100:.0f}%，建议继续观望"
+            )
+            out["verdict_label"] = PERSONAL_VERDICT_LABEL["wait"]
+            return out
+
+    if percentile_10y is None:
+        out["verdict"] = "unknown"
+        out["verdict_reason"] = (
+            f"缺少近10年PE分位，无法判断档位；建议维持每日 {daily:.0f} 元"
+        )
+        out["verdict_label"] = PERSONAL_VERDICT_LABEL["unknown"]
+        return out
+
+    mult, reason = multiplier_from_percentile(index_name, percentile_10y, policy=policy)
+    if mult <= 0:
+        out["verdict"] = "pause"
+        out["multiplier"] = 0.0
+        out["verdict_reason"] = f"{reason}；建议暂停每日 {daily:.0f} 元"
+        out["verdict_label"] = PERSONAL_VERDICT_LABEL["pause"]
+        return out
+
+    near_high_dd = float(cfg.get("stop_boost_drawdown_below", 0.01))
+    require_dd = bool(cfg.get("require_drawdown_for_boost", True))
+    if mult > 1.0:
+        if require_dd and drawdown_from_52w_high is None:
+            mult = 1.0
+            reason = f"{reason}；缺回撤数据，不建议加码、维持 100%"
+        elif (
+            drawdown_from_52w_high is not None
+            and drawdown_from_52w_high < near_high_dd
+        ):
+            mult = 1.0
+            reason = (
+                f"{reason}；近52周高点（回撤 {drawdown_from_52w_high * 100:.2f}%），"
+                f"不建议加码、维持 100%"
+            )
+    out["multiplier"] = mult
+
+    if mult > 1.0:
+        out["verdict"] = "boost"
+        out["verdict_label"] = PERSONAL_VERDICT_LABEL["boost"]
+        out["verdict_reason"] = (
+            f"{reason}；可在每日 {daily:.0f} 元之外手动加码"
+            f"（自动扣款金额需自行在招行 App 调整）"
+        )
+    elif mult < 1.0:
+        out["verdict"] = "wait"
+        out["verdict_label"] = PERSONAL_VERDICT_LABEL["wait"]
+        out["verdict_reason"] = f"{reason}；每日 {daily:.0f} 元可维持，但不建议加码"
+    else:
+        out["verdict"] = "maintain"
+        out["verdict_label"] = PERSONAL_VERDICT_LABEL["maintain"]
+        out["verdict_reason"] = f"{reason}；维持每日 {daily:.0f} 元"
+    return out
+
+
+def personal_dca_verdict_rank(verdict: str) -> int:
+    """Sort helper: lower rank = more attention needed."""
+    return {
+        "pause": 0,
+        "wait": 1,
+        "unknown": 2,
+        "maintain": 3,
+        "boost": 4,
+        "disabled": 5,
+    }.get(str(verdict), 2)
+
 
 
 def portfolio_monthly_base(policy: dict | None = None) -> float:
@@ -179,7 +375,9 @@ def _tiers_for(name: str, policy: dict | None = None) -> list[dict]:
     cfg = dca_config(policy)
     if name in A_SHARE:
         return list(cfg.get("a_share_tiers") or [])
-    if name == "标普500":
+    if name in US:
+        # 纳斯达克100 has no portfolio sleeve allocation, but its personal
+        # daily auto-invest is still monitored against the same US ladder.
         return list(cfg.get("us_tiers") or [])
     return []
 
@@ -257,13 +455,24 @@ def resolve_dca_line(
     require_dd = bool(cfg.get("require_drawdown_for_boost", True))
 
     if not dca_allowed_index(name, policy):
+        personal = personal_dca_schedule_for_index(name, policy)
+        if personal:
+            _code, schedule = personal
+            reason = (
+                f"{name} 不占组合周度预算；已由"
+                f"{schedule.get('broker') or '银行'}每交易日自动定投 "
+                f"{float(schedule.get('daily_amount') or 0):.0f} 元，"
+                f"单独按估值/溢价监控"
+            )
+        else:
+            reason = "该标的不参与自动定投（份额归短债）"
         return {
             "name": name,
             "action": "reference",
             "multiplier": 0.0,
             "monthly": 0.0,
             "weekly": 0.0,
-            "reason": "该标的不参与自动定投（份额归短债）",
+            "reason": reason,
             "paused": True,
         }
 
@@ -363,11 +572,19 @@ def allocate_dca_plan(
     """Allocate portfolio monthly_base..cap across 5 sleeves by weight + priority.
 
     Weekly = remaining month budget / remaining Thursdays in this calendar month.
+
+    When ``dca.portfolio_weekly_enabled`` is false (all held sleeves are on the
+    bank's daily auto-invest), the budget is forced to 0 so no duplicate buy
+    instructions are produced. The per-sleeve valuation multiplier, action and
+    reason are still attached, so each sleeve reports 维持 / 建议暂停 / 建议恢复
+    for the daily auto-invest that the bank already executes.
     """
     policy = policy or load_policy()
     cfg = dca_config(policy)
-    base = portfolio_monthly_base(policy)
-    cap = portfolio_monthly_cap(policy)
+    weekly_enabled = bool(cfg.get("portfolio_weekly_enabled", True))
+    base = portfolio_monthly_base(policy) if weekly_enabled else 0.0
+    cap = portfolio_monthly_cap(policy) if weekly_enabled else 0.0
+    personal_codes = personal_dca_fund_codes(policy)
     today = today or date.today()
     sleeves = list(cfg.get("sleeves") or [])
     priority = list(cfg.get("priority") or [s["name"] for s in sleeves])
@@ -476,9 +693,27 @@ def allocate_dca_plan(
             weekly = 0.0
 
         if role == "residual":
-            reason = "目标仓位短债底仓；权益暂停/纳指份额并入"
-            action = "buy" if weekly > 0 else "wait"
-            paused = weekly <= 0
+            residual_schedule = personal_dca_schedule(
+                str(sleeve.get("fund_code") or ""), policy
+            )
+            if weekly_enabled:
+                reason = "目标仓位短债底仓；权益暂停/纳指份额并入"
+                action = "buy" if weekly > 0 else "wait"
+                paused = weekly <= 0
+            elif residual_schedule:
+                # 组合周度预算停用：短债由银行每日自动扣款，不再是「并入」目标。
+                reason = (
+                    f"{name}由{residual_schedule.get('broker') or '银行'}"
+                    f"每交易日自动定投 "
+                    f"{float(residual_schedule.get('daily_amount') or 0):.0f} 元；"
+                    f"组合周度预算已停用"
+                )
+                action = "reference"
+                paused = False
+            else:
+                reason = "目标仓位短债底仓；组合周度预算已停用"
+                action = "wait"
+                paused = False
             mult = 1.0
         elif role == "excluded":
             src = by_index.get(index_name, {})
@@ -514,6 +749,17 @@ def allocate_dca_plan(
                 "label": decision_label(action) if not paused and weekly > 0 else (
                     "定投暂停" if paused else decision_label(action)
                 ),
+                "personal_dca": bool(str(sleeve.get("fund_code") or "") in personal_codes),
+                "daily_amount": float(
+                    (
+                        personal_dca_schedule(
+                            str(sleeve.get("fund_code") or ""), policy
+                        )
+                        or {}
+                    ).get("daily_amount")
+                    or 0.0
+                ),
+                "portfolio_weekly_enabled": weekly_enabled,
                 "month_target_total": month_target,
                 "month_spent": spent,
                 "month_remaining": remain_budget,
@@ -818,14 +1064,40 @@ def fingerprint_build(lines: list[dict]) -> dict:
     }
 
 
+def fingerprint_personal_dca(lines: list[dict]) -> dict:
+    """Verdict-only fingerprint for the bank's daily auto-invest.
+
+    Monthly progress is deliberately excluded: it changes every trading day and
+    must never trigger an alert email.
+    """
+    return {
+        line["name"]: {
+            "verdict": line.get("verdict"),
+            "verdict_label": line.get("verdict_label"),
+            "multiplier": line.get("multiplier"),
+            "daily_amount": line.get("daily_amount"),
+        }
+        for line in lines
+    }
+
+
 def dca_summary_line(policy: dict | None = None) -> str:
     base = portfolio_monthly_base(policy)
     cap = portfolio_monthly_cap(policy)
-    return (
-        f"定投：组合月基础{base:.0f}元、封顶{cap:.0f}元（低估最高倍率可上浮至封顶）；"
-        f"A/美股≥90%停、80%～90%→50%；周四周报；与建仓邮件分离；"
-        f"{personal_dca_summary_line(policy)}"
-    )
+    weekly_enabled = bool(dca_config(policy).get("portfolio_weekly_enabled", True))
+    if weekly_enabled:
+        plan_bit = (
+            f"定投：组合月基础{base:.0f}元、封顶{cap:.0f}元（低估最高倍率可上浮至封顶）；"
+            f"A/美股≥90%停、80%～90%→50%；周四周报；与建仓邮件分离；"
+        )
+    else:
+        plan_bit = (
+            f"定投：四只标的均已改为招行 App 每交易日自动扣款，组合周度预算"
+            f"（原月基础{base:.0f}/封顶{cap:.0f}）自 2026-10-15 起不再生成申购清单；"
+            f"估值档位仅用于给每日定投「维持／建议暂停／建议恢复」的监控结论；"
+            f"A/美股≥90%分位→建议暂停、80%～90%→仅维持不加码；周四监控周报；与建仓邮件分离；"
+        )
+    return plan_bit + personal_dca_summary_line(policy)
 
 
 def build_summary_line(policy: dict | None = None) -> str:
@@ -835,5 +1107,5 @@ def build_summary_line(policy: dict | None = None) -> str:
     days = int(cfg.get("confirm_trading_days", 2))
     return (
         f"建仓：每日刷新、状态机触发；升级/恢复需连续{days}个交易日确认；"
-        "风险信号立即发；同一状态不重复催促；不与周度定投合并"
+        "风险信号立即发；同一状态不重复催促；不与每日定投合并"
     )

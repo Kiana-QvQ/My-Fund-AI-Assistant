@@ -29,6 +29,7 @@ if str(SCRIPTS) not in sys.path:
 
 from alert_state import (  # noqa: E402
     format_dca_changes,
+    format_personal_dca_changes,
     load_alert_state,
     save_alert_state,
 )
@@ -44,6 +45,7 @@ from investment_plan import (  # noqa: E402
     allocate_dca_plan,
     apply_dca_purchase_gates,
     fingerprint_dca,
+    fingerprint_personal_dca,
     personal_dca_fund_codes,
     resolve_build_line,
     resolve_dca_line,
@@ -54,6 +56,7 @@ from fund_purchase_gate import (  # noqa: E402
     fund_record,
 )
 from policy_rules import load_policy  # noqa: E402
+from sync_personal_dca import collect_personal_dca  # noqa: E402
 from trading_calendar import (  # noqa: E402
     is_a_share_trading_day,
     next_a_share_trading_day,
@@ -420,18 +423,36 @@ def build_dca_email(
     timing: dict[str, str],
     policy: dict,
     changes: list[str] | None = None,
+    personal_lines: list[dict] | None = None,
 ) -> tuple[str, str]:
     from cost_basis_metrics import format_avg_cost_bit  # noqa: WPS433
 
     now = datetime.now(CST).strftime("%Y-%m-%d %H:%M CST")
+    personal_lines = personal_lines or []
     ops = [ln for ln in lines if float(ln.get("weekly") or 0) > 0]
-    paused = [ln for ln in lines if ln.get("paused")]
+    # 每日自动定投的标的由招行照常扣款，不算「暂停」，另有独立监控区展示。
+    paused = [
+        ln for ln in lines if ln.get("paused") and not ln.get("personal_dca")
+    ]
     subject = f"【定投】{timing['order_date']}｜{title}"
     if ops:
         subject += "｜" + "、".join(ln["name"] for ln in ops)
+    elif personal_lines:
+        attention = [
+            ln
+            for ln in personal_lines
+            if ln.get("verdict") in ("pause", "wait")
+        ]
+        if attention:
+            subject += "｜每日定投：" + "、".join(
+                f"{ln['name']}{ln['verdict_label']}" for ln in attention
+            )
+        else:
+            subject += "｜每日定投监控"
     elif paused:
         subject += "｜权益暂停"
 
+    weekly_enabled = bool((policy.get("dca") or {}).get("portfolio_weekly_enabled", True))
     total_week = sum(float(ln["weekly"]) for ln in lines)
     total_month = float((lines[0].get("month_target_total") if lines else 0) or 0)
     thursdays_left = int((lines[0].get("thursdays_left") if lines else 0) or 0)
@@ -441,6 +462,37 @@ def build_dca_email(
     def _avg_suffix(ln: dict) -> str:
         bit = format_avg_cost_bit(ln)
         return f"｜{bit}" if bit else ""
+
+    def _personal_bits(ln: dict) -> str:
+        bits: list[str] = []
+        pct10 = ln.get("pct_10y")
+        if isinstance(pct10, (int, float)):
+            bits.append(f"10年分位 {pct10:.1f}%")
+        premium_pct = ln.get("premium_pct")
+        if isinstance(premium_pct, (int, float)):
+            bits.append(f"溢价 {premium_pct:.2f}%")
+        return f"｜{'｜'.join(bits)}" if bits else ""
+
+    personal_block = (
+        "\n".join(
+            f"  · {ln['name']} {ln['fund_code']}｜每交易日 {float(ln.get('daily_amount') or 0):.0f} 元"
+            f"｜本月已记 {int(ln.get('month_entries') or 0)} 笔 / "
+            f"{float(ln.get('month_spent') or 0):.2f} 元"
+            f"｜{ln.get('verdict_label')}"
+            f"{_personal_bits(ln)}\n"
+            f"      {ln.get('verdict_reason') or ''}"
+            for ln in personal_lines
+        )
+        or "  · 未配置每日自动定投"
+    )
+    if personal_lines:
+        total_daily = sum(float(ln.get("daily_amount") or 0) for ln in personal_lines)
+        personal_head = (
+            f"【每日自动定投（招商银行 App）】每交易日合计 "
+            f"{total_daily:.0f} 元｜银行自动扣款，无需手动下单"
+        )
+    else:
+        personal_head = ""
 
     op_block = (
         "\n".join(
@@ -492,26 +544,63 @@ def build_dca_email(
             "\n【变更】\n" + "\n".join(f"- {c}" for c in changes) + "\n"
         )
 
+    personal_section = ""
+    if personal_head:
+        personal_section = f"\n{personal_head}\n{personal_block}\n"
+
+    if weekly_enabled:
+        budget_line = (
+            f"【预算】本月计划 {total_month:.0f}｜已记定投 {month_spent:.0f}｜"
+            f"剩余 {month_remaining:.0f}｜剩周四 {thursdays_left}"
+        )
+        rule_bit = (
+            "规则：月基础 300 / 封顶 1000；≥90% 停；80%～90%→50%；"
+            "权益周额＜10 元并入短债。"
+        )
+    else:
+        budget_line = (
+            "【组合周度预算】自 2026-10-15 起停用：四只标的由招行 App "
+            "每交易日自动扣款，本邮件只做记账与监控，不再给申购金额。"
+        )
+        rule_bit = (
+            "规则：每日自动定投按 A 股交易日扣款、不设月终止金额；"
+            "10年分位≥90% 建议暂停、80%～90% 建议维持不加码；"
+            "QDII 溢价＞2% 建议暂停、≤1% 才恢复。"
+        )
+
+    # 组合周度预算停用且本周确实没有可申购项时，不再渲染申购清单，
+    # 免得每天收到一份恒为「0.00 元 / 无」的清单。
+    if ops or weekly_enabled:
+        order_section = (
+            "【银行执行清单】\n"
+            f"{checklist}\n"
+            "\n"
+            f"【本周申购】合计约 {total_week:.2f} 元\n"
+            f"{op_block}\n"
+        )
+        pause_head = "【暂停】（组合周度预算口径；每日自动定投另见上方监控）"
+    else:
+        order_section = (
+            "【手动申购】无。四只标的由招商银行 App 每交易日自动扣款，"
+            "无需手动下单；调仓/建仓如需手动买入，请按下方的建仓邮件判断。\n"
+        )
+        pause_head = "【暂停】"
+
     body = f"""{subject}
 
 生成：{now}
-估值日 {timing["signal_date"]}｜请在 {timing["order_date"]} 15:00 前场外申购
-{change_section}
-【银行执行清单】
-{checklist}
-
-【本周申购】合计约 {total_week:.2f} 元
-{op_block}
-
-【权益相对均价】（≥8% 组合定投建议软降；个人纳指日定投不受影响）
+估值日 {timing["signal_date"]}｜若确有手动申购，请在 {timing["order_date"]} 15:00 前提交
+{change_section}{personal_section}
+{order_section}
+【权益相对均价】（≥8% 时组合建议软降；每日自动定投不受影响）
 {avg_block}
 
-【暂停】
+{pause_head}
 {pause_block}
 
-【预算】本月计划 {total_month:.0f}｜已记定投 {month_spent:.0f}｜剩余 {month_remaining:.0f}｜剩周四 {thursdays_left}
-规则：月基础 300 / 封顶 1000；≥90% 停；80%～90%→50%；权益周额＜10 元并入短债。
-QDII：溢价＞2% 停；≤1% 才恢复；中间观望。须开放申购/限大额且不超过日限额。
+{budget_line}
+{rule_bit}
+QDII：溢价＞2% 建议暂停；≤1% 才恢复；中间观望。须开放申购/限大额且不超过日限额。
 记账：purpose=dca → `record_holding.py buy --purpose dca --shares … --nav …`（建仓用 purpose=build）
 仅研究提醒，不自动下单。
 
@@ -630,7 +719,7 @@ def build_build_email(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="定投周报 / 定投事件 / 建仓事件 分开发送"
+        description="每日定投监控周报 / 定投事件 / 建仓事件 分开发送"
     )
     parser.add_argument("--snapshot", default=str(SNAPSHOT_PATH))
     parser.add_argument("--dry-run", action="store_true")
@@ -638,7 +727,7 @@ def main() -> None:
         "--mode",
         choices=("auto", "weekly_dca", "event", "force_dca", "force_build"),
         default="auto",
-        help="auto=周四发定投周报+检测事件；event=仅事件；weekly_dca=强制周报",
+        help="auto=周四发每日定投监控周报+检测事件；event=仅事件；weekly_dca=强制周报",
     )
     parser.add_argument(
         "--persist-state",
@@ -679,7 +768,19 @@ def main() -> None:
     build_lines = collect_build(snapshot, policy)
     new_dca_fp = fingerprint_dca(dca_lines)
 
+    # Daily auto-invest monitoring (招行 App 每交易日扣款)：金额由银行固定，
+    # 系统只跟踪「维持 / 建议暂停 / 可考虑加码」的结论变化。
+    personal_lines = collect_personal_dca(snapshot, policy, today=today)
+    new_personal_fp = fingerprint_personal_dca(personal_lines)
+
     old_dca = state.get("dca") or {}
+    old_personal = state.get("personal_dca") or {}
+    # No baseline yet (first run / migration) must not fire a storm of changes.
+    personal_changes = (
+        format_personal_dca_changes(old_personal, new_personal_fp)
+        if old_personal
+        else []
+    )
     old_machines = state.get("build_machines") or {}
     # Migrate legacy fingerprint → machine baseline (no email storm).
     if not old_machines and state.get("build"):
@@ -773,12 +874,19 @@ def main() -> None:
     print(
         f"mode={args.mode} thursday={is_thursday} "
         f"dca_changes={len(dca_changes)} build_changes={len(build_changes)} "
+        f"personal_changes={len(personal_changes)} "
         f"first_run={first_run} month_spent={month_spent}"
     )
     for ln in dca_lines:
         print(
             f"DCA {ln['name']}: mult={ln['multiplier']} "
             f"weekly={ln['weekly']} monthly={ln['monthly']} paused={ln['paused']}"
+        )
+    for ln in personal_lines:
+        print(
+            f"PERSONAL {ln['name']} {ln['fund_code']}: "
+            f"daily={ln.get('daily_amount')} verdict={ln.get('verdict')} "
+            f"month_spent={ln.get('month_spent')} entries={ln.get('month_entries')}"
         )
     for ln in build_lines:
         pending = ln.get("pending_confirm") or ""
@@ -790,7 +898,8 @@ def main() -> None:
     sent_weekly = False
     sent_event_dca = False
     email_cfg = (policy.get("dca") or {}).get("email") or {}
-    weekly_enabled = bool(email_cfg.get("weekly_thursday", True))
+    # Note: this is the *email* cadence flag, not dca.portfolio_weekly_enabled.
+    weekly_email_enabled = bool(email_cfg.get("weekly_thursday", True))
     event_enabled = bool(email_cfg.get("event_on_change", True))
     max_dca_mails = int(email_cfg.get("max_dca_emails_per_month", 6))
     dca_mails_sent = (
@@ -805,7 +914,7 @@ def main() -> None:
         return dca_mails_sent < max_dca_mails
 
     send_weekly = (
-        weekly_enabled
+        weekly_email_enabled
         and dca_quota_left()
         and (
             args.mode in ("weekly_dca", "force_dca")
@@ -814,37 +923,40 @@ def main() -> None:
     )
     if send_weekly:
         subject, body = build_dca_email(
-            title="周四定投周报",
+            title="每日定投监控周报",
             lines=dca_lines,
             timing=timing,
             policy=policy,
-            changes=dca_changes or None,
+            changes=(dca_changes + personal_changes) or None,
+            personal_lines=personal_lines,
         )
         send_email(subject, body, dry_run=args.dry_run)
         sent_weekly = True
         dca_mails_sent += 1
 
-    # 周四周报与事件信可并存；受 event_on_change 与月度封顶约束
+    # 周报与事件信可并存；受 event_on_change 与月度封顶约束
+    event_reasons = dca_changes + personal_changes
     send_event_dca = (
         event_enabled
         and dca_quota_left()
         and args.mode in ("event", "auto", "force_dca")
-        and (args.mode == "force_dca" or dca_changes)
+        and (args.mode == "force_dca" or event_reasons)
     )
-    if send_event_dca and dca_changes:
+    if send_event_dca:
         subject, body = build_dca_email(
             title="定投档位/倍率变更",
             lines=dca_lines,
             timing=timing,
             policy=policy,
-            changes=dca_changes,
+            changes=event_reasons or ["（手动 force_dca）"],
+            personal_lines=personal_lines,
         )
         send_email(subject, body, dry_run=args.dry_run)
         sent_event_dca = True
         dca_mails_sent += 1
     elif (
         event_enabled
-        and dca_changes
+        and event_reasons
         and not dca_quota_left()
         and args.mode in ("event", "auto")
     ):
@@ -873,16 +985,17 @@ def main() -> None:
         and not sent_build
         and args.mode != "force_build"
     ):
-        print("跳过发送：无周四周报且无定投/建仓状态变更（或定投邮件达月上限）")
+        print("跳过发送：非周报日且无定投/建仓状态变更（或定投邮件达月上限）")
         _write_github_summary(
             "### 邮件跳过\n\n"
-            "- 非周四周报，或定投/建仓状态无变化，或定投邮件已达月上限\n"
+            "- 非周报日，或定投/建仓状态无变化，或定投邮件已达月上限\n"
         )
 
     if args.persist_state and not args.dry_run:
         save_alert_state(
             {
                 "dca": new_dca_fp,
+                "personal_dca": new_personal_fp,
                 "build": fingerprint_from_machines(new_machines),
                 "build_machines": new_machines,
                 "dca_month": {

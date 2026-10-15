@@ -76,3 +76,24 @@ def format_dca_changes(old: dict, new: dict) -> list[str]:
 def diff_fingerprint(old: dict, new: dict) -> list[str]:
     """Backward-compatible alias — prefer format_dca_changes for DCA."""
     return format_dca_changes(old, new)
+
+
+def format_personal_dca_changes(old: dict, new: dict) -> list[str]:
+    """Verdict diffs for the bank's daily auto-invest (维持/暂停/加码).
+
+    Progress (本月已记笔数/金额) is never part of the fingerprint, so it can not
+    spam an email; only a verdict flip such as 建议暂停 → 维持 shows up here.
+    """
+    changes: list[str] = []
+    for name in sorted(set(old) | set(new)):
+        a = old.get(name)
+        b = new.get(name)
+        if a == b:
+            continue
+        left = str((a or {}).get("verdict_label") or "（无）") if isinstance(a, dict) else "（无）"
+        right = str((b or {}).get("verdict_label") or "（无）") if isinstance(b, dict) else "（无）"
+        daily = ""
+        if isinstance(b, dict) and b.get("daily_amount") is not None:
+            daily = f"（每交易日 {float(b['daily_amount']):.0f} 元）"
+        changes.append(f"每日定投 {name}：{left} → {right}{daily}")
+    return changes

@@ -49,7 +49,7 @@ codex-skills/investment-team/SKILL.md
 使用 thesis-tracker 为 510300、510500、513500、159941 建立长期投资论文
 使用 thesis-drift 对比本季度和上季度的组合投资论文
 使用 news-pulse 分析本周影响组合的重大新闻
-使用 investment-checklist 检查是否应该执行本月定投
+使用 investment-checklist 检查每天定投的四只标的现在应该维持、暂停还是加码
 ```
 
 注意：它的示例主要面向公司和股票研究。对你的 ETF 组合，应明确告诉它：
@@ -178,8 +178,8 @@ QDII 溢价率：...
 ```text
 只做研究和纸面计划，不下单。
 根据 data/portfolio_snapshot.csv、config/portfolio_policy.json 和最新行情，
-检查我的组合是否偏离目标仓位，判断本月每个标的应该正常定投、暂停、加倍
-还是等待，并列出每个判断所需的数据来源和缺失项。
+检查我的组合是否偏离目标仓位，判断每天自动定投的四只标的（012773 / 460300 / 160119 / 016452）
+现在应该维持、暂停还是加码，并列出每个判断所需的数据来源和缺失项。
 ```
 
 ### Vibe-Trading 的安全边界

@@ -24,6 +24,22 @@ from investment_plan import (  # noqa: E402
 from policy_rules import load_policy, resolve_action  # noqa: E402
 
 
+def policy_with_weekly_budget(**dca_overrides) -> dict:
+    """Policy copy with the legacy portfolio weekly budget switched back on.
+
+    Production policy (2026-10-15+) sets ``portfolio_weekly_enabled: false``
+    because every sleeve now runs on the bank's daily auto-invest. Tests that
+    exercise the budget maths opt in explicitly, so a policy change cannot
+    silently rewrite their meaning.
+    """
+    policy = load_policy()
+    dca = dict(policy.get("dca") or {})
+    dca["portfolio_weekly_enabled"] = True
+    dca.update(dca_overrides)
+    policy["dca"] = dca
+    return policy
+
+
 class DcaMultiplierTests(unittest.TestCase):
     def setUp(self) -> None:
         self.policy = load_policy()
@@ -106,12 +122,14 @@ class DcaMultiplierTests(unittest.TestCase):
         self.assertIn("缺回撤数据", line["reason"])
 
     def test_resolve_action_dca_only_no_build_merge(self) -> None:
+        # 这条断言验的是「组合份额 = 300 × 27% × 50% = 40.5」这类预算口径文案，
+        # 生产政策已停用周度预算，所以这里显式打开（与其它预算用例一致）。
         action, reason = resolve_action(
             "沪深300",
             80.0,
             percentile_1y=40.0,
             drawdown_from_52w_high=0.10,
-            policy=self.policy,
+            policy=policy_with_weekly_budget(),
             held_cost=0.0,
             target_amount=2700.0,
         )
@@ -148,7 +166,7 @@ class DcaMultiplierTests(unittest.TestCase):
 
 class DcaAllocationTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.policy = load_policy()
+        self.policy = policy_with_weekly_budget()
 
     def test_five_sleeves_sum_at_half_band(self) -> None:
         equity = [
@@ -221,11 +239,7 @@ class DcaAllocationTests(unittest.TestCase):
         total = round(sum(ln["monthly"] for ln in lines), 2)
         self.assertEqual(total, 231.0)
 
-        policy = load_policy()
-        policy = {
-            **policy,
-            "dca": {**policy["dca"], "monthly_base": 300, "monthly_cap": 200},
-        }
+        policy = policy_with_weekly_budget(monthly_base=300, monthly_cap=200)
         equity = [
             resolve_dca_line("沪深300", 25.0, drawdown_from_52w_high=0.10, policy=policy),
             resolve_dca_line("中证500", 25.0, drawdown_from_52w_high=0.10, policy=policy),

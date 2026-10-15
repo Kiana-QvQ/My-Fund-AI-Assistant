@@ -52,7 +52,7 @@ def soft_scale_from_policy(policy: dict | None) -> dict[str, Any]:
         "min_scale": float(cfg.get("min_scale", 0.5)),
         "exclude_personal_dca": bool(cfg.get("exclude_personal_dca", True)),
         "note": cfg.get("note")
-        or "现价相对持仓均价偏高时，组合定投/建仓建议金额软降级；个人纳指日定投不受影响。",
+        or "现价相对持仓均价偏高时，建仓建议金额软降级；四只每日自动定投不受影响。",
     }
 
 

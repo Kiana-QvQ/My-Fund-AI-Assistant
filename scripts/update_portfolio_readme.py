@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
-from datetime import datetime, timezone, timedelta
+from datetime import date, datetime, timezone, timedelta
 from pathlib import Path
 
 try:
@@ -37,6 +37,7 @@ from policy_rules import (  # noqa: E402
     load_policy,
     resolve_action,
 )
+from sync_personal_dca import collect_personal_dca  # noqa: E402
 
 HOLDINGS_PATH = ROOT / "config" / "portfolio_holdings.json"
 SNAPSHOT_PATH = ROOT / "data" / "market_snapshot.json"
@@ -44,6 +45,9 @@ STATUS_PATH = ROOT / "data" / "portfolio_status.json"
 README_PATH = ROOT / "README.md"
 START = "<!-- PORTFOLIO_STATUS_START -->"
 END = "<!-- PORTFOLIO_STATUS_END -->"
+
+#: 行情/账本 as_of 落后超过这个天数就在看板上写出来，避免把旧数据当成今天的结论。
+STALE_AFTER_DAYS = 3
 
 INDEX_WEIGHT = {
     "沪深300": ("460300", 0.27),
@@ -84,6 +88,43 @@ def format_update_time(when: datetime) -> str:
     return local.strftime("%Y-%m-%d %H:%M:%S CST")
 
 
+def data_staleness_note(
+    snapshot: dict,
+    holdings_doc: dict,
+    today: date,
+    *,
+    max_age_days: int = STALE_AFTER_DAYS,
+) -> str | None:
+    """Warn on the dashboard when market/ledger data lags behind today.
+
+    The dashboard is regenerated on every run, but the *inputs* may not be: a
+    stale ``market_snapshot.json`` or ledger would otherwise be read as "the
+    bank did not debit today". Returns None when everything is fresh.
+    """
+    lagging: list[str] = []
+    for label, raw in (
+        ("行情快照", str(snapshot.get("as_of") or "")[:10]),
+        ("持仓账本", str(holdings_doc.get("as_of") or "")[:10]),
+    ):
+        if not raw:
+            lagging.append(f"{label}无 as_of")
+            continue
+        try:
+            age = (today - date.fromisoformat(raw)).days
+        except ValueError:
+            lagging.append(f"{label} {raw} 日期格式异常")
+            continue
+        if age > max_age_days:
+            lagging.append(f"{label} {raw}（落后 {age} 天）")
+    if not lagging:
+        return None
+    return (
+        "⚠️ 数据较旧：" + "、".join(lagging)
+        + "。先运行 `python scripts/refresh_market_snapshot.py --principal 10000` 与 "
+        "`python scripts/sync_personal_dca.py`，再按本页结论操作。"
+    )
+
+
 def summarize_equity(indexes: dict, holdings_cost: dict[str, float], principal: float) -> tuple[str, list[str]]:
     """Return overall equity tone and short per-index notes."""
     names = ("沪深300", "中证500", "标普500", "纳斯达克100")
@@ -113,7 +154,7 @@ def summarize_equity(indexes: dict, holdings_cost: dict[str, float], principal: 
         )
         label = decision_label(action)
         if name == "纳斯达克100" and action == "reference":
-            label = "仅参考·个人定投另计"
+            label = "每日自动定投·仅参考"
         if action == "overvalued_watch":
             label = "高估观察，当前无持仓无需止盈"
         premium_pct = item.get("qdii_premium_pct")
@@ -376,6 +417,19 @@ def build_status() -> dict:
     elif ndx.get("verified") is not True:
         data_status += "；纳指估值未核验/仅参考"
 
+    try:
+        personal_rows = collect_personal_dca(
+            snapshot,
+            load_policy(),
+            today=generated.date(),
+            holdings_doc=holdings_doc,
+        )
+    except Exception as exc:  # noqa: BLE001 — dashboard must still render
+        print(f"警告: 每日自动定投监控行生成失败（{exc}）", file=sys.stderr)
+        personal_rows = []
+
+    staleness = data_staleness_note(snapshot, holdings_doc, generated.date())
+
     status = {
         "as_of": as_of,
         "generated_at": generated.isoformat(timespec="seconds"),
@@ -390,6 +444,8 @@ def build_status() -> dict:
         "overall_decision": overall,
         "equity_notes": equity_notes,
         "rows": rows,
+        "personal_dca": personal_rows,
+        "data_staleness": staleness,
         "indexes": indexes,
         "holdings_cost": {
             item["fund_code"]: float(item.get("cost_basis") or 0)
@@ -424,15 +480,22 @@ def render(status: dict) -> str:
         f"> {status['overall_decision']}",
         "> 状态灯：🟢 可买/微建仓/可建仓 · 🟠 止盈观察 · 🟡 观望/暂停/溢价暂缓 · ⚪ 等待数据",
         "> 投入占比 = 已投入 ÷ 1万元本金；相对均价 =（净值 − 均价）/ 均价；"
-        "权益相对均价 ≥8% 时组合定投/建仓建议软降级。"
+        "权益相对均价 ≥8% 时建仓建议软降级（每日自动定投不受影响）。"
         "指数点位 = 券商 App 同口径实时报价（如沪深300 4582.68）；"
         "买入均点 ≈ 昨收 ×（持仓均价 ÷ 净值）；相对均点按实时点位对比买入均点。",
-        "",
-        "#### 建仓进度",
-        "",
-        "| 基金 | 已投入 | 目标 | 还差 | 状态 |",
-        "|---|---:|---:|---:|---|",
     ]
+    staleness = status.get("data_staleness")
+    if staleness:
+        lines.append(f"> {staleness}")
+    lines.extend(
+        [
+            "",
+            "#### 建仓进度",
+            "",
+            "| 基金 | 已投入 | 目标 | 还差 | 状态 |",
+            "|---|---:|---:|---:|---|",
+        ]
+    )
     for row in status["rows"]:
         lines.append(
             f"| {short_fund_label(row['name'], row['fund_code'])} | "
@@ -440,6 +503,37 @@ def render(status: dict) -> str:
             f"{money(row['target_amount'])} | {money(row['shortfall'])} | "
             f"{row['decision']} |"
         )
+
+    personal_rows = status.get("personal_dca") or []
+    if personal_rows:
+        daily_total = sum(float(r.get("daily_amount") or 0) for r in personal_rows)
+        daily_detail = "、".join(
+            f"{r.get('name') or r.get('fund_code')} ¥{float(r.get('daily_amount') or 0):.0f}"
+            for r in personal_rows
+        )
+        lines.extend(
+            [
+                "",
+                "#### 每日自动定投（招商银行 App · 每交易日扣款）",
+                "",
+                f"> 每交易日合计 **¥{daily_total:.0f}**（{daily_detail}）；"
+                "**不设月终止金额**，不占用组合周度预算，非交易日顺延至下一交易日。",
+                "",
+                "| 基金 | 每日 | 本月已记 | 本月金额 | 监控结论 |",
+                "|---|---:|---:|---:|---|",
+            ]
+        )
+        for row in personal_rows:
+            lines.append(
+                f"| {short_fund_label(row['name'], row['fund_code'])} | "
+                f"¥{float(row.get('daily_amount') or 0):.0f} | "
+                f"{int(row.get('month_entries') or 0)} 笔 | "
+                f"{money(float(row.get('month_spent') or 0))} | "
+                f"{row.get('verdict_label') or '-'} |"
+            )
+        lines.extend(["", "> 监控理由（银行照常扣款，系统只提示是否建议暂停/加码）：", ""])
+        for row in personal_rows:
+            lines.append(f"- {row['name']}：{row.get('verdict_reason') or '-'}")
 
     equity_rows = [
         row
@@ -595,7 +689,7 @@ def render(status: dict) -> str:
         }.get(name, name)
         decision = decision_label(action)
         if action == "reference" or name == "纳斯达克100":
-            decision = "仅参考·个人定投另计"
+            decision = "每日定投另计·仅参考"
         elif action == "overvalued_watch":
             decision = "高估观察"
         elif action == "unknown":
@@ -613,7 +707,8 @@ def render(status: dict) -> str:
             "标普用 Multpl 指数PE，四层校验通过才可交易判断。"
             "纳指 PE 来自 QQQ（stockanalysis/yfinance）**仅供参考**；样本不足时分位显示「无统计分位」。"
             "爬虫失败严禁用过期缓存做买卖。QDII溢价＞2%暂缓买入。"
-            "短债012773不看PE/回撤。周四约12:00定投周报；工作日监测档位/建仓事件邮件。",
+            "短债012773不看PE/回撤。四只标的由招行 App 每交易日自动扣款；"
+            "周四约12:00发每日定投监控周报；工作日监测档位/建仓事件邮件。",
             "",
             f"> 数据状态：{status['data_status']}。AI 只提供研究建议，不自动下单。",
             END,

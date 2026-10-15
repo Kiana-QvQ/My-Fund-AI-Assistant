@@ -317,7 +317,7 @@ def try_bootstrap_action(
         action,
         f"1年建仓档：近1年分位 {percentile_1y:.2f}% ≤ {thr:.0f}% "
         f"且回撤 {drawdown_from_52w_high * 100:.2f}% ≥ {need * 100:.0f}%"
-        f"{ten_note} → 建仓份额 {frac * 100:.0f}%（独立于周度定投；点位不单独触发）",
+        f"{ten_note} → 建仓份额 {frac * 100:.0f}%（独立于每日定投；点位不单独触发）",
         frac,
     )
 
@@ -363,23 +363,54 @@ def resolve_action(
     # Local import avoids cycles with investment_plan ↔ policy_rules.
     from investment_plan import (  # noqa: WPS433
         dca_config,
+        personal_dca_monitor,
+        personal_dca_schedule,
         portfolio_monthly_base,
         resolve_dca_line,
         sleeve_weight,
     )
 
+    pol = policy or load_policy()
     held = float(held_cost or 0)
     line = resolve_dca_line(
         name,
         percentile,
         premium=premium,
         drawdown_from_52w_high=drawdown_from_52w_high,
-        policy=policy,
+        policy=pol,
         verified=verified,
         tradeable=tradeable,
     )
     action = line["action"]
     reason = line["reason"]
+
+    cfg = dca_config(pol)
+    weekly_enabled = bool(cfg.get("portfolio_weekly_enabled", True))
+    weight = 0.0
+    sleeve_code = ""
+    for sleeve in cfg.get("sleeves") or []:
+        if sleeve.get("index") == name or sleeve.get("name") == name:
+            weight = sleeve_weight(sleeve, pol)
+            sleeve_code = str(sleeve.get("fund_code") or "")
+            break
+
+    # 每日自动定投监控：组合周度预算停用后，结论以「维持 / 建议暂停」呈现。
+    schedule = personal_dca_schedule(sleeve_code, pol) if sleeve_code else None
+    personal_note = ""
+    if schedule and not weekly_enabled:
+        monitor = personal_dca_monitor(
+            sleeve_code,
+            percentile_10y=percentile,
+            premium=premium,
+            drawdown_from_52w_high=drawdown_from_52w_high,
+            policy=pol,
+        )
+        daily = float(schedule.get("daily_amount") or 0)
+        personal_note = (
+            f"招行每日自动定投 {daily:.0f} 元 → {monitor['verdict_label']}"
+            f"（{monitor['verdict_reason']}）"
+        )
+        reason = f"{reason}；{personal_note}"
 
     if action == "reference":
         return action, reason
@@ -389,7 +420,7 @@ def resolve_action(
         return action, reason
 
     pause_at = float(
-        (policy or load_policy()).get("dca", {}).get("pause_10y_at_or_above", 90)
+        pol.get("dca", {}).get("pause_10y_at_or_above", 90)
     )
     if (
         percentile is not None
@@ -397,7 +428,7 @@ def resolve_action(
         and held > 0
     ):
         observe = deep_drawdown_observe_reason(
-            percentile, drawdown_from_52w_high, policy
+            percentile, drawdown_from_52w_high, pol
         )
         tp_reason = (
             f"近10年分位 {percentile:.2f}% ≥ {pause_at:.0f}%，"
@@ -405,27 +436,29 @@ def resolve_action(
         )
         if observe:
             tp_reason = f"{tp_reason}；{observe}"
+        if personal_note:
+            tp_reason = f"{tp_reason}；{personal_note}"
         return "take_profit", tp_reason
 
     if action == "overvalued_watch" and held <= 0:
         observe = deep_drawdown_observe_reason(
-            percentile, drawdown_from_52w_high, policy
+            percentile, drawdown_from_52w_high, pol
         )
         reason_out = "高估观察，当前无持仓无需止盈；定投已暂停"
         if observe:
             reason_out = f"{reason_out}；{observe}"
+        if personal_note:
+            reason_out = f"{reason_out}；{personal_note}"
         return "overvalued_watch", reason_out
 
     if line["paused"]:
         return "wait", reason
 
+    if not weekly_enabled:
+        # 组合周度预算已停用：不再给「组合份额 X 元/月」的申购金额。
+        return action, reason
+
     # Ideal sleeve share of portfolio base (before priority/cap trim)
-    pol = policy or load_policy()
-    weight = 0.0
-    for sleeve in dca_config(pol).get("sleeves") or []:
-        if sleeve.get("index") == name or sleeve.get("name") == name:
-            weight = sleeve_weight(sleeve, pol)
-            break
     ideal = round(portfolio_monthly_base(pol) * weight * float(line["multiplier"]), 2)
     return action, f"{reason}；组合份额约 {ideal:.0f} 元/月（总额基础300封顶1000）"
 
@@ -445,5 +478,5 @@ def decision_label(action: str) -> str:
         "overvalued_watch": "高估观察（无持仓）",
         "premium_block": "溢价过高暂缓",
         "unknown": "估值未核验/数据不足",
-        "reference": "仅参考·不自动买",
+        "reference": "仅参考·每日自动定投另计",
     }.get(action, action)

@@ -107,7 +107,7 @@ def build_prompt(mode: str, user_input: str) -> str:
     integrations = json.dumps(load_integrations(), ensure_ascii=False, indent=2)
     upstream_skills = load_upstream_skill_context()
     task = {
-        "plan": "根据投资政策和输入，生成下一期定投/再平衡计划。必须列出依据、仓位影响、风险、待人工确认事项。",
+        "plan": "根据投资政策和输入，给出四只标的每日自动定投的监控结论（维持/建议暂停/可考虑加码）与再平衡计划。必须列出依据、仓位影响、风险、待人工确认事项。",
         "journal": "把输入整理成一篇交易日记草稿，区分事实、当时判断、情绪、结果和下次改进。",
         "review": "复盘输入中的交易，检查是否违反投资政策，指出证据不足之处，不得编造行情数据。",
     }[mode]

@@ -47,6 +47,9 @@ jobs:
         id: gate
         shell: bash
         run: |
+          # 交易日规则：周一至周五剔除法定节假日（交易所年度休市安排）。
+          # 优先 AKShare 新浪交易日历；不可用时回退 scripts/a_share_holidays.py
+          # 内置的官方休市表（含 2026 全年），两者都无则跳过（fail-closed）。
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "run=yes" >> "$GITHUB_OUTPUT"
             echo "run_us=yes" >> "$GITHUB_OUTPUT"
@@ -67,7 +70,7 @@ jobs:
           else
             MODE="auto"
             if [ "${{ steps.gate.outputs.run }}" != "yes" ]; then
-              # A股休市：仍发动态事件信（溢价/建仓/美股档位），不发周四定投周报
+              # A股休市：仍发动态事件信（溢价/建仓/美股档位），不发每日定投监控周报
               MODE="event"
             fi
           fi
@@ -81,6 +84,8 @@ jobs:
       - name: Sync personal trading-day DCA ledger
         if: steps.gate.outputs.run == 'yes'
         run: python scripts/sync_personal_dca.py
+        # 四只标的均为招行 App 每交易日自动定投，按政策里的 effective_from 起补记；
+        # 需要人工确认过的历史补账：--since YYYY-MM-DD --fund <code>
 
       - name: Backfill equity shares / avg cost from NAV history
         if: steps.gate.outputs.run == 'yes'
@@ -230,7 +235,7 @@ jobs:
 
       - name: Holiday US-only notice
         if: steps.gate.outputs.run != 'yes' && steps.gate.outputs.run_us == 'yes'
-        run: echo "今天不是 A 股交易日：已刷新美股估值与 README；可发送动态事件邮件（无定投周报）。"
+        run: echo "今天不是 A 股交易日：已刷新美股估值与 README；可发送动态事件邮件（每日自动定投不在非交易日扣款）。"
 
       - name: Failure notice
         if: failure()
@@ -239,8 +244,9 @@ jobs:
           {
             echo "### 工作流失败"
             echo ""
-            echo "- 计划约 **每周四 12:00 CST** 发定投周报；工作日同一时刻检测档位/建仓事件。"
-            echo "- 周四若需招行操作：约 **13:00 CST** 前请到 Actions 确认 run 是否成功（当日 15:00 前申购）。"
-            echo "- 失败不等于「今天无信号」。"
+            echo "- 四只标的由招行 App 每交易日自动扣款，本工作流负责记账与监控（无需手动下单）。"
+            echo "- 约 **每周四 12:00 CST** 发每日定投监控周报；工作日同一时刻检测档位/建仓事件。"
+            echo "- 周四若需手动调整定投，约 **13:00 CST** 前请到 Actions 确认 run 是否成功（当日 15:00 前操作）。"
+            echo "- 失败不等于「今天无信号」，也不代表定投没扣款。"
           } >> "$GITHUB_STEP_SUMMARY"
           echo "Workflow failed — see job Summary."
