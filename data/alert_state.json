@@ -70,7 +70,7 @@
       "state": "不可买"
     },
     "标普500": {
-      "state": "数据源失败"
+      "state": "QDII溢价阻断"
     }
   },
   "build_machines": {
@@ -89,11 +89,11 @@
       "last_notified_at": "2026-07-21T10:41:30+08:00"
     },
     "标普500": {
-      "current_state": "数据源失败",
+      "current_state": "QDII溢价阻断",
       "candidate_state": null,
       "candidate_count": 0,
-      "last_notified_state": "数据源失败",
-      "last_notified_at": "2026-09-21T17:47:54+08:00"
+      "last_notified_state": "QDII溢价阻断",
+      "last_notified_at": "2026-10-16T16:55:09+08:00"
     }
   },
   "dca_month": {
@@ -102,5 +102,5 @@
     "emails_sent": 5,
     "planned_monthly": 0.0
   },
-  "updated_at": "2026-10-15T17:05:06+08:00"
+  "updated_at": "2026-10-16T16:55:12+08:00"
 }
