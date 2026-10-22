@@ -8,11 +8,11 @@
       "action": "reference"
     },
     "沪深300": {
-      "multiplier": 1.5,
+      "multiplier": 2.0,
       "monthly": 0.0,
       "weekly": 0.0,
       "paused": false,
-      "action": "boost_150"
+      "action": "double"
     },
     "中证500": {
       "multiplier": 0.7,
@@ -58,7 +58,7 @@
     "沪深300": {
       "verdict": "boost",
       "verdict_label": "可考虑加码",
-      "multiplier": 1.5,
+      "multiplier": 2.0,
       "daily_amount": 5.0
     }
   },
@@ -99,8 +99,8 @@
   "dca_month": {
     "year_month": "2026-10",
     "spent": 0.0,
-    "emails_sent": 5,
+    "emails_sent": 6,
     "planned_monthly": 0.0
   },
-  "updated_at": "2026-10-21T17:18:17+08:00"
+  "updated_at": "2026-10-22T17:21:43+08:00"
 }
