@@ -15,11 +15,11 @@
       "action": "double"
     },
     "中证500": {
-      "multiplier": 0.7,
+      "multiplier": 1.0,
       "monthly": 0.0,
       "weekly": 0.0,
       "paused": false,
-      "action": "seventy"
+      "action": "buy"
     },
     "标普500": {
       "multiplier": 0.0,
@@ -43,13 +43,13 @@
       "multiplier": 0.0,
       "daily_amount": 10.0
     },
-    "中证500": {
-      "verdict": "wait",
-      "verdict_label": "建议维持不加码",
-      "multiplier": 0.7,
+    "短债": {
+      "verdict": "maintain",
+      "verdict_label": "维持每日定投",
+      "multiplier": 1.0,
       "daily_amount": 5.0
     },
-    "短债": {
+    "中证500": {
       "verdict": "maintain",
       "verdict_label": "维持每日定投",
       "multiplier": 1.0,
@@ -102,5 +102,5 @@
     "emails_sent": 6,
     "planned_monthly": 0.0
   },
-  "updated_at": "2026-10-22T17:21:43+08:00"
+  "updated_at": "2026-10-23T17:15:51+08:00"
 }
