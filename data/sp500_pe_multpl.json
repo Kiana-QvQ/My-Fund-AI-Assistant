@@ -1,6 +1,6 @@
 {
   "source": "https://www.multpl.com/s-p-500-pe-ratio/table/by-month",
-  "fetched_at": "2026-11-02T20:09:12+08:00",
+  "fetched_at": "2026-11-10T20:26:11+08:00",
   "points": [
     {
       "date": "1871-01-01",
@@ -7480,14 +7480,18 @@
     },
     {
       "date": "2026-10-01",
-      "pe_ttm": 26.29
+      "pe_ttm": 26.16
     },
     {
-      "date": "2026-10-30",
-      "pe_ttm": 25.86
+      "date": "2026-11-01",
+      "pe_ttm": 25.73
+    },
+    {
+      "date": "2026-11-09",
+      "pe_ttm": 25.75
     }
   ],
-  "latest_date": "2026-10-30",
-  "latest_pe": 25.86,
-  "count": 1871
+  "latest_date": "2026-11-09",
+  "latest_pe": 25.75,
+  "count": 1872
 }
